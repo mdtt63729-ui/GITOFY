@@ -216,7 +216,7 @@ export async function fetchUserInbox(token?: string): Promise<InboxItem[]> {
           repo: n.repository?.full_name || 'Repository',
           summary: `${n.reason ? n.reason.toUpperCase() : 'NOTIFICATION'}: ${n.subject?.type || 'Update'} on ${n.repository?.name || ''}`,
           type: n.subject?.type === 'CheckSuite' || n.subject?.type === 'WorkflowRun' ? 'workflow' : 'push',
-          status: n.unread ? 'success' : 'info',
+          status: n.unread ? 'success' : 'neutral',
           timestamp: new Date(n.updated_at).toLocaleDateString(),
           read: !n.unread,
           details: `Subject: ${n.subject?.title}\nType: ${n.subject?.type}\nRepository: ${n.repository?.full_name}\nReason: ${n.reason}`,
@@ -599,6 +599,43 @@ export async function checkRepoAvailability(
 }
 
 /**
+ * Fetches real language breakdown for a repository from GitHub API
+ * Returns an array of { name: string, bytes: number, percentage: number }
+ */
+export async function fetchRepoLanguages(
+  owner: string,
+  repo: string,
+  token?: string
+): Promise<Array<{ name: string; bytes: number; percentage: number }>> {
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github.v3+json',
+  };
+  if (token && token.trim()) {
+    headers.Authorization = `Bearer ${token.trim()}`;
+  }
+
+  try {
+    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/languages`, {
+      headers,
+    });
+    if (res.ok) {
+      const data: Record<string, number> = await res.json();
+      const totalBytes = Object.values(data).reduce((acc, curr) => acc + curr, 0);
+      if (totalBytes > 0) {
+        return Object.entries(data).map(([name, bytes]) => ({
+          name,
+          bytes,
+          percentage: Math.round((bytes / totalBytes) * 100),
+        }));
+      }
+    }
+  } catch (err) {
+    console.warn('Could not fetch languages from GitHub:', err);
+  }
+  return [];
+}
+
+/**
  * Real repository creation on GitHub API
  */
 export async function createGitHubRepo(
@@ -943,28 +980,4 @@ export async function performRealGitPush(
 
   onProgress(100, 'Commit and push successful!', 'Done');
   return { success: true, sha: newCommitSha.substring(0, 7) };
-}
-
-/** Gitofy Part 3: lightweight backup/restore helpers. */
-export async function createBackupTag(owner: string, repo: string, branch: string, token: string): Promise<{name:string;sha:string}> {
-  const headers = { Authorization: `Bearer ${token.trim()}`, Accept: 'application/vnd.github.v3+json', 'Content-Type': 'application/json' };
-  const refRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(branch)}`, { headers });
-  if (!refRes.ok) throw new Error(`Could not read ${branch} HEAD (HTTP ${refRes.status}).`);
-  const refData = await refRes.json();
-  const name = `gitofy-backup-${new Date().toISOString().replace(/[:.]/g,'-')}`;
-  const createRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/refs`, { method:'POST', headers, body:JSON.stringify({ref:`refs/tags/${name}`, sha:refData.object.sha}) });
-  if (!createRes.ok) { const e = await createRes.json().catch(()=>({})); throw new Error(e.message || `Backup tag failed (HTTP ${createRes.status}).`); }
-  return { name, sha: refData.object.sha };
-}
-
-export async function fetchBackupTags(owner: string, repo: string, token: string): Promise<Array<{name:string;sha:string}>> {
-  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/matching-refs/tags/gitofy-backup-`, { headers:{ Authorization:`Bearer ${token.trim()}`, Accept:'application/vnd.github.v3+json' } });
-  if (!res.ok) return [];
-  const data = await res.json();
-  return Array.isArray(data) ? data.map((r:any)=>({name:String(r.ref).replace('refs/tags/',''),sha:r.object?.sha||''})).filter((x:any)=>x.sha).reverse() : [];
-}
-
-export async function restoreBranchToSha(owner: string, repo: string, branch: string, sha: string, token: string): Promise<void> {
-  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${encodeURIComponent(branch)}`, { method:'PATCH', headers:{ Authorization:`Bearer ${token.trim()}`, Accept:'application/vnd.github.v3+json', 'Content-Type':'application/json' }, body:JSON.stringify({sha,force:false}) });
-  if (!res.ok) { const e=await res.json().catch(()=>({})); throw new Error(e.message || `Restore failed (HTTP ${res.status}).`); }
 }

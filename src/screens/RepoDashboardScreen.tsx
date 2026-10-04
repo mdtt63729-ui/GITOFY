@@ -10,7 +10,6 @@ export interface RepoDashboardScreenProps {
   onBack: () => void;
   onUpdateWithZip: () => void;
   onRunWorkflows: () => void;
-  onOpenProTools: () => void;
   onDeleteRepo: () => void;
 }
 
@@ -50,7 +49,6 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
   onBack,
   onUpdateWithZip,
   onRunWorkflows,
-  onOpenProTools,
   onDeleteRepo,
 }) => {
   const { colors, settings, triggerHaptic } = useTheme();
@@ -718,9 +716,6 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
                     This repository doesn't have tagged releases on GitHub yet.
                   </span>
                 </div>
-                <M3Button variant="tonal" size="compact" onClick={onOpenProTools}>
-                  Pro Tools
-                </M3Button>
                 <M3Button variant="tonal" size="compact" onClick={onRunWorkflows}>
                   Trigger CI Release Workflow
                 </M3Button>

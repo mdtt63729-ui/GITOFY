@@ -25,7 +25,6 @@ import { EngineResult } from './git/gitUploadEngine';
 
 // Screens
 import { OnboardingScreen } from './screens/OnboardingScreen';
-import { SplashScreen } from './screens/SplashScreen';
 import { HomeScreen } from './screens/HomeScreen';
 import { InboxScreen } from './screens/InboxScreen';
 import { RepoDashboardScreen } from './screens/RepoDashboardScreen';
@@ -39,14 +38,12 @@ import { RepoPickerSheet } from './screens/RepoPickerSheet';
 import { M3UploadFlowScreen } from './screens/M3UploadFlowScreen';
 import { M3GalleryScreen } from './screens/M3GalleryScreen';
 import { MotionLabScreen } from './screens/MotionLabScreen';
-import { ProToolsScreen } from './screens/ProToolsScreen';
 import { PageTransition } from './ui/transitions/PageTransition';
 
 function GitofyApp() {
   const { settings, updateSettings, triggerHaptic } = useTheme();
 
   // Navigation State - Defaults to onboarding if no token is saved yet
-  const [isSplashVisible, setIsSplashVisible] = useState(true);
   const [currentScreen, setCurrentScreen] = useState<AppScreen>(() => {
     return settings.personalAccessToken ? 'home' : 'onboarding';
   });
@@ -282,9 +279,6 @@ function GitofyApp() {
 
   return (
     <AndroidFrame>
-      {isSplashVisible && (
-        <SplashScreen onFinished={() => setIsSplashVisible(false)} />
-      )}
       {/* Hidden File Input for Real Device ZIP Selection */}
       <input
         ref={fileInputRef}
@@ -306,7 +300,6 @@ function GitofyApp() {
                 githubUsername: username,
                 avatarUrl,
               });
-              try { localStorage.setItem('gitofy_onboarding_completed', '1'); } catch {}
               setCurrentScreen('home');
             }}
           />
@@ -372,7 +365,6 @@ function GitofyApp() {
             onBack={() => setCurrentScreen('home')}
             onUpdateWithZip={() => handleTriggerZipPicker(selectedRepo)}
             onRunWorkflows={() => setCurrentScreen('workflows')}
-            onOpenProTools={() => setCurrentScreen('pro_tools')}
             onDeleteRepo={() => {
               setSelectedRepoIds([selectedRepo.id]);
               setShowDeleteConfirmDialog(true);
@@ -504,16 +496,6 @@ function GitofyApp() {
               setCurrentScreen('repo_dashboard');
               setIsNavVisible(true);
             }}
-            onRunWorkflows={() => setCurrentScreen('workflows')}
-          />
-        )}
-
-        {currentScreen === 'pro_tools' && selectedRepo && (
-          <ProToolsScreen
-            repo={selectedRepo}
-            zipFile={activeZipFile}
-            token={settings.personalAccessToken}
-            onBack={() => setCurrentScreen('repo_dashboard')}
             onRunWorkflows={() => setCurrentScreen('workflows')}
           />
         )}

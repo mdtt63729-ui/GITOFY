@@ -11,23 +11,6 @@ import { M3IconButton } from '../ui/m3/M3IconButton';
 import { M3Dialog } from '../ui/m3/M3Dialog';
 import { M3Chip } from '../ui/m3/M3Chip';
 
-const getFileIcon = (path: string) => {
-  const name = path.toLowerCase();
-  if (name.endsWith('/')) return 'folder';
-  if (/\.(png|jpe?g|gif|webp|svg|ico)$/.test(name)) return 'image';
-  if (/\.(kt|java|js|jsx|ts|tsx|py|go|rs|swift|dart|cpp|c|h)$/.test(name)) return 'code';
-  if (/\.(json|ya?ml|toml|xml|gradle|properties)$/.test(name)) return 'data_object';
-  if (/\.(md|txt|rst)$/.test(name)) return 'description';
-  if (/\.(zip|tar|gz|7z|rar)$/.test(name)) return 'folder_zip';
-  return 'insert_drive_file';
-};
-
-const formatFileSize = (bytes: number) => {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-};
-
 export type FlowStage = 'calculating' | 'diff_review' | 'uploading' | 'success' | 'error';
 
 export interface M3UploadFlowScreenProps {
@@ -262,122 +245,80 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
       {/* STAGE 1: CALCULATING SCREEN                               */}
       {/* --------------------------------------------------------- */}
       {stage === 'calculating' && (
-        <div
-          className="flex-1 flex flex-col animate-page-enter overflow-hidden"
-          style={{
-            ['--md-sys-color-primary' as string]: colors.primary,
-            ['--md-sys-color-on-surface' as string]: colors.onSurface,
-            ['--md-sys-color-on-surface-variant' as string]: colors.onSurfaceVariant,
-            ['--md-sys-color-surface' as string]: colors.surface,
-            ['--md-sys-color-surface-container' as string]: colors.surfaceContainer,
-            ['--md-sys-color-surface-container-low' as string]: colors.surfaceContainerLow,
-            ['--md-sys-color-surface-container-high' as string]: colors.surfaceContainerHigh,
-            ['--md-sys-color-surface-container-highest' as string]: colors.surfaceContainerHighest,
-            ['--md-sys-color-outline' as string]: colors.outline,
-            ['--md-sys-color-outline-variant' as string]: colors.outlineVariant,
-            ['--md-ref-typeface-brand' as string]: 'Roboto, system-ui, sans-serif',
-            ['--md-ref-typeface-plain' as string]: 'Roboto, system-ui, sans-serif',
-          } as React.CSSProperties}
-        >
-          <header
-            className="sticky top-0 z-20 px-4 pt-3 pb-2 border-b backdrop-blur-xl"
-            style={{ backgroundColor: `${colors.surface}ee`, borderColor: colors.outlineVariant }}
-          >
-            <div className="flex items-center gap-2">
-              <md-icon-button aria-label="Cancel" onClick={onCancel}>
-                <md-icon>arrow_back</md-icon>
-              </md-icon-button>
-              <div className="min-w-0 flex-1">
-                <div className="text-[11px] font-medium truncate" style={{ color: colors.onSurfaceVariant }}>
-                  {repo.full_name || repo.name}
-                </div>
-                <h2 className="md-typescale-title-large font-semibold tracking-tight">Project files</h2>
-              </div>
-              <md-assist-chip label={`${displayFilesCount} files`} />
-            </div>
-          </header>
+        <div className="flex-1 flex flex-col items-center justify-between py-6 animate-page-enter">
+          {/* Top Title */}
+          <div className="text-center flex flex-col items-center gap-1.5 pt-4">
+            <span className="text-xs font-mono font-medium" style={{ color: colors.primary }}>
+              {repo.full_name || repo.name}
+            </span>
+            <h2 className="text-2xl font-black tracking-tight" style={{ color: colors.onSurface }}>
+              Calculating
+            </h2>
+            <p className="text-xs opacity-70" style={{ color: colors.onSurfaceVariant }}>
+              Analyzing your project and preparing changes
+            </p>
+          </div>
 
-          <main className="flex-1 overflow-y-auto px-4 pb-28">
-            <section className="pt-4">
-              <div className="flex items-center justify-between mb-2">
-                <div>
-                  <p className="md-typescale-label-medium" style={{ color: colors.primary }}>CALCULATING</p>
-                  <h3 className="md-typescale-headline-small font-semibold">Analyzing project</h3>
-                </div>
-                <md-circular-progress indeterminate aria-label="Project analysis in progress" />
-              </div>
-              <p className="md-typescale-body-medium" style={{ color: colors.onSurfaceVariant }}>
+          {/* Hero M3 Circular Progress Indicator */}
+          <div className="flex flex-col items-center gap-5 my-auto">
+            <div className="relative flex items-center justify-center p-3">
+              <M3CircularProgress
+                size={84}
+                strokeWidth={6}
+                color={colors.primary}
+                trackColor={colors.surfaceContainerHighest}
+              />
+            </div>
+
+            <div className="flex flex-col items-center text-center gap-1">
+              <p
+                className="text-xs font-mono font-medium px-3 py-1 rounded-full border transition-colors"
+                style={{
+                  backgroundColor: colors.surfaceContainerLow,
+                  borderColor: colors.outlineVariant,
+                  color: colors.onSurface,
+                }}
+              >
                 {calculatingStatus}
               </p>
-              <div className="mt-4">
-                <md-linear-progress indeterminate aria-label="Calculating project files" />
-              </div>
-            </section>
-
-            <section className="grid grid-cols-2 gap-3 mt-5">
-              <div className="p-4 rounded-[24px] border" style={{ backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant }}>
-                <div className="flex items-center gap-2 mb-2" style={{ color: colors.onSurfaceVariant }}>
-                  <md-icon>folder_open</md-icon>
-                  <span className="md-typescale-label-medium">Files detected</span>
-                </div>
-                <div className="md-typescale-headline-medium font-semibold" style={{ color: colors.primary }}>{displayFilesCount}</div>
-              </div>
-              <div className="p-4 rounded-[24px] border" style={{ backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant }}>
-                <div className="flex items-center gap-2 mb-2" style={{ color: colors.onSurfaceVariant }}>
-                  <md-icon>data_usage</md-icon>
-                  <span className="md-typescale-label-medium">Total size</span>
-                </div>
-                <div className="md-typescale-headline-medium font-semibold" style={{ color: colors.primary }}>{displaySizeMb} MB</div>
-              </div>
-            </section>
-
-            <section className="mt-6">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <h3 className="md-typescale-title-medium font-semibold">Project files</h3>
-                  <p className="md-typescale-body-small" style={{ color: colors.onSurfaceVariant }}>Files appear as the ZIP is extracted</p>
-                </div>
-                <span className="text-[11px] font-mono" style={{ color: colors.onSurfaceVariant }}>
-                  {extractedFiles.length ? `${extractedFiles.length} loaded` : 'Scanning…'}
-                </span>
-              </div>
-
-              <div className="rounded-[28px] overflow-hidden border" style={{ borderColor: colors.outlineVariant, backgroundColor: colors.surfaceContainerLow }}>
-                {extractedFiles.length === 0 ? (
-                  <div className="px-4 py-8 text-center">
-                    <md-circular-progress indeterminate aria-label="Reading project files" />
-                    <p className="md-typescale-body-medium mt-3" style={{ color: colors.onSurfaceVariant }}>Reading files…</p>
-                  </div>
-                ) : (
-                  <md-list>
-                    {extractedFiles.map((file, index) => (
-                      <React.Fragment key={`${file.path}-${index}`}>
-                        <md-list-item>
-                          <md-icon slot="start">{getFileIcon(file.path)}</md-icon>
-                          <div slot="headline" className="font-mono text-[12px] truncate">{file.path}</div>
-                          <div slot="supporting-text">{file.path.split('.').pop()?.toUpperCase() || 'FILE'} · {formatFileSize(file.size)}</div>
-                          <span slot="end" className="text-[10px] font-mono" style={{ color: colors.onSurfaceVariant }}>{formatFileSize(file.size)}</span>
-                        </md-list-item>
-                        {index < extractedFiles.length - 1 && <md-divider inset /> }
-                      </React.Fragment>
-                    ))}
-                  </md-list>
-                )}
-              </div>
-            </section>
-          </main>
-
-          <footer
-            className="fixed left-0 right-0 bottom-0 z-30 px-4 py-3 border-t backdrop-blur-xl"
-            style={{ backgroundColor: `${colors.surface}f2`, borderColor: colors.outlineVariant }}
-          >
-            <div className="flex gap-2 max-w-xl mx-auto">
-              <md-outlined-button className="flex-1" onClick={onCancel}>Cancel</md-outlined-button>
-              <md-filled-button className="flex-1" disabled>
-                <md-icon slot="icon">sync</md-icon>Analyzing…
-              </md-filled-button>
             </div>
-          </footer>
+
+            {/* Real-time Statistics Cards */}
+            <div className="w-full max-w-xs grid grid-cols-2 gap-2.5 mt-2">
+              <div
+                className="p-3 rounded-2xl border flex flex-col items-center justify-center text-center transition-all"
+                style={{
+                  backgroundColor: colors.surfaceContainerLowest,
+                  borderColor: colors.outlineVariant,
+                }}
+              >
+                <span className="text-xl font-black font-mono" style={{ color: colors.primary }}>
+                  {displayFilesCount}
+                </span>
+                <span className="text-[11px] font-medium opacity-70">Files detected</span>
+              </div>
+
+              <div
+                className="p-3 rounded-2xl border flex flex-col items-center justify-center text-center transition-all"
+                style={{
+                  backgroundColor: colors.surfaceContainerLowest,
+                  borderColor: colors.outlineVariant,
+                }}
+              >
+                <span className="text-xl font-black font-mono" style={{ color: colors.primary }}>
+                  {displaySizeMb} MB
+                </span>
+                <span className="text-[11px] font-medium opacity-70">Total size</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Cancel */}
+          <div className="w-full max-w-xs">
+            <M3Button variant="tonal" shape="capsule" size="medium" className="w-full" onClick={onCancel}>
+              Cancel
+            </M3Button>
+          </div>
         </div>
       )}
 

@@ -183,5 +183,4 @@ export type AppScreen =
   | 'workflows'
   | 'settings'
   | 'm3_gallery'
-  | 'motion_lab'
-  | 'pro_tools';
+  | 'motion_lab';
