@@ -1,88 +1,67 @@
-# Why the APK showed "Web page not available" — and what was fixed
+# Why the APK showed "Web page not available" — root cause and fixes
 
 ## Symptom
-Opening the app showed an Android WebView error page:
+Opening the app shows an Android WebView error page:
 
     Web page not available
     The web page at https://appassets.androidplatform.net/web/index.html
     could not be loaded because: net::ERR_INVALID_RESPONSE
 
-## Cause
-The app is a native Android shell (`MainActivity.kt`) that loads its UI from the
-WebView at `https://appassets.androidplatform.net/web/index.html`, served by
-`WebViewAssetLoader` out of `android/app/src/main/assets/web/`.
+## Root cause (the real one)
+The app loads its UI from a `WebView` at
+`https://appassets.androidplatform.net/web/index.html`, served from the APK's
+`assets/` folder by `WebViewAssetLoader` in `MainActivity.kt`.
 
-That folder was **empty**. The web bundle is only produced by the JavaScript
-build (`npm run build` -> `dist/`) and then copied into `assets/web/`. When the
-APK was assembled without running the JS build first, the Gradle task
-`copyWebAssets` (a `Sync`) had no `dist/` to copy from and **wiped the
-destination folder**, leaving the APK with no `index.html`. The WebView then
-requested a file that did not exist and returned `ERR_INVALID_RESPONSE`.
+`WebViewAssetLoader` maps a URL to a file like this:
 
-## What was changed
-1. The web bundle is now built and committed into
-   `android/app/src/main/assets/web/` (index.html + assets + integrity.json),
-   so the APK contains a real UI.
-2. `android/app/src/main/res/raw/integrity_root.txt` is set to the matching
-   bundle hash so the anti-tamper check passes on first launch.
-3. `android/app/build.gradle` no longer lets a missing `dist/` silently empty
-   the assets:
-   - `copyWebAssets` only runs when `dist/` exists, and
-   - a new `verifyWebAssets` task fails the build with a clear message if
-     `assets/web/index.html` is absent.
-4. Size: `src/assets/gitofy_icon.png` was a 4096x4096 image (2.39 MB) but the
-   splash logo is only ever drawn at 54x54 px (`.splash-logo-mark`). It is now
-   512x512 (about 165 KB), which is visually identical at that size and shrinks
-   both the web bundle and the APK. The launcher icon
-   (`res/drawable-nodpi/gitofy_icon.png`) is untouched. Restore the original
-   4096x4096 file if you need it for something else.
+1. it strips the **registered prefix** from the URL path, then
+2. opens the **remainder relative to the assets root**.
 
-## How to build a working APK
+The code registered the prefix `"/web/"`. So `/web/index.html` had `/web/`
+stripped, leaving `index.html`, which was then opened as `assets/index.html`.
+But the bundle actually lives at `assets/web/index.html`. The file was therefore
+never found, the loader returned an empty response, and WebView showed
+`net::ERR_INVALID_RESPONSE`.
 
-From the project root:
+(For reference, the AndroidX docs example registers `"/assets/"` and loads
+`/assets/www/index.html`, which resolves to `assets/www/index.html` — the prefix
+is dropped and the rest is asset-relative. A `"/web/"` prefix therefore does
+**not** mean the `assets/web/` directory.)
 
+## The fix
+In `android/app/src/main/java/com/gitofy/app/MainActivity.kt` the path handler
+was changed from `"/web/"` to `"/"`:
+
+    val assetLoader = WebViewAssetLoader.Builder()
+        .addPathHandler("/", WebViewAssetLoader.AssetsPathHandler(this))
+        .build()
+
+Now `/web/index.html` resolves to `assets/web/index.html`, and every subresource
+(`/web/assets/index-*.js`, `/web/assets/index-*.css`, `/web/assets/gitofy_icon-*.png`)
+resolves correctly too. The load URL is unchanged.
+
+## Other fixes bundled in this project
+1. The built web UI is present inside `android/app/src/main/assets/web/`
+   (index.html + assets + integrity.json), so the APK ships a real UI.
+2. `android/app/build.gradle` no longer lets a missing `dist/` silently empty
+   that folder: `copyWebAssets` only runs when `dist/` exists, and a new
+   `verifyWebAssets` task fails the build if `assets/web/index.html` is absent.
+3. `android/app/src/main/res/raw/integrity_root.txt` holds the matching bundle
+   hash so the anti-tamper check passes on first launch.
+4. Size: `src/assets/gitofy_icon.png` was 4096x4096 (2.39 MB) but the splash
+   logo is only drawn at 54x54 px; it is now 512x512 (~165 KB).
+5. `.github/workflows/release-apk.yml` stamps the version from the tag, deletes
+   old `*.apk` assets from the release before uploading the new one, and
+   publishes on both a tag push and a manual run.
+
+## How to build
     npm install
-    npm run build                     # writes dist/ and dist/integrity.json
+    npm run build
     node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('dist/integrity.json','utf8')).root;fs.writeFileSync('android/app/src/main/res/raw/integrity_root.txt', r);"
     rm -rf android/app/src/main/assets/web && mkdir -p android/app/src/main/assets/web
     cp -R dist/. android/app/src/main/assets/web/
     cd android && gradle assembleDebug
 
-Or just run the included GitHub Actions workflow
-(`.github/workflows/release-apk.yml`), which performs all of the above
-automatically and produces a signed APK.
-
-Because `assets/web/` is now pre-populated, a plain Android Studio / Gradle
-build will also work even without running the JS build first.
-
-## Native Android
-This is already a native Android application (Kotlin `AppCompatActivity` with a
-JS bridge, Custom Tabs for OAuth, biometrics, FileProvider, signed APK, launcher
-icon). It installs and runs like any other native app. The UI inside is rendered
-by a hardened WebView rather than Jetpack Compose.
-
-## Offline
-The UI bundle ships inside the APK, so the app now opens and shows its interface
-with no internet connection. GitHub operations (login, repos, diffs, push,
-Actions) still require a connection, because they call the GitHub API. There is
-in-app handling for the offline state (e.g. the login screen shows
-"Offline — we will continue when you are back online").
-
-## Release workflow fix (release publishing)
-
-`.github/workflows/release-apk.yml` was also fixed so a new release carries the
-new signed APK instead of getting stuck with an old one:
-
-- The version is stamped into `android/app/build.gradle` from the tag
-  (v1.2.3 -> versionName "1.2.3", versionCode = run number). Previously
-  versionName was hard-coded "1.0.0", so every APK was named
-  `GITOFY-v1.0.0-release.apk` and the installed app kept reporting 1.0.0.
-- Old `*.apk` assets are deleted from the release before the new APK is
-  uploaded, so the release ends up with exactly one APK — the newest signed one.
-- The release is created/updated for both a `v*` tag push and a manual
-  "Run workflow"; `overwrite_files: true` is set explicitly.
-
-Reminder: this workflow needs the four signing secrets
-(ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS,
-ANDROID_KEY_PASSWORD). Run the "Bootstrap signing secrets" workflow once to
-create them, or the release job exits at its first step and no APK is published.
+Or run the GitHub Actions workflow (`.github/workflows/release-apk.yml`), which
+does all of the above and produces a signed APK. Because `assets/web/` is now
+pre-populated, a plain Android Studio / Gradle build also works.

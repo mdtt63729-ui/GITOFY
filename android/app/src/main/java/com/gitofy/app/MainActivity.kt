@@ -386,8 +386,13 @@ class MainActivity : AppCompatActivity() {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
 
+        // NOTE: WebViewAssetLoader strips the registered prefix and then opens the
+        // *remainder* relative to the assets root. So a "/web/" handler maps
+        // /web/index.html to assets/index.html (missing) -> ERR_INVALID_RESPONSE.
+        // Registering "/" makes /web/index.html resolve to assets/web/index.html,
+        // which is where the bundle actually lives.
         val assetLoader = WebViewAssetLoader.Builder()
-            .addPathHandler("/web/", WebViewAssetLoader.AssetsPathHandler(this))
+            .addPathHandler("/", WebViewAssetLoader.AssetsPathHandler(this))
             .build()
 
         webView = WebView(this).apply {
