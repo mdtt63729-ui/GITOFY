@@ -216,7 +216,7 @@ export async function fetchUserInbox(token?: string): Promise<InboxItem[]> {
           repo: n.repository?.full_name || 'Repository',
           summary: `${n.reason ? n.reason.toUpperCase() : 'NOTIFICATION'}: ${n.subject?.type || 'Update'} on ${n.repository?.name || ''}`,
           type: n.subject?.type === 'CheckSuite' || n.subject?.type === 'WorkflowRun' ? 'workflow' : 'push',
-          status: n.unread ? 'success' : 'neutral',
+          status: n.unread ? 'success' : 'info',
           timestamp: new Date(n.updated_at).toLocaleDateString(),
           read: !n.unread,
           details: `Subject: ${n.subject?.title}\nType: ${n.subject?.type}\nRepository: ${n.repository?.full_name}\nReason: ${n.reason}`,
@@ -524,40 +524,6 @@ export async function fetchUserRepos(token: string): Promise<Repository[]> {
 }
 
 /**
- * Lazily fetches detailed language percentage breakdown for a specific repository (G-02)
- */
-export async function fetchRepoLanguages(
-  owner: string,
-  repo: string,
-  token?: string
-): Promise<Array<{ name: string; percentage: number; color: string }>> {
-  const headers: Record<string, string> = {
-    Accept: 'application/vnd.github.v3+json',
-  };
-  if (token && token.trim()) {
-    headers.Authorization = `Bearer ${token.trim()}`;
-  }
-
-  try {
-    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/languages`, { headers });
-    if (!res.ok) return [];
-
-    const data: Record<string, number> = await res.json();
-    const entries = Object.entries(data);
-    if (entries.length === 0) return [];
-
-    const totalBytes = entries.reduce((sum, [, bytes]) => sum + bytes, 0);
-    return entries.map(([name, bytes]) => ({
-      name,
-      percentage: Math.round((bytes / totalBytes) * 100),
-      color: GITHUB_LANGUAGE_COLORS[name] || '#6e7681',
-    }));
-  } catch {
-    return [];
-  }
-}
-
-/**
  * Checks real repository name availability on GitHub
  */
 export async function checkRepoAvailability(
@@ -626,6 +592,7 @@ export async function fetchRepoLanguages(
           name,
           bytes,
           percentage: Math.round((bytes / totalBytes) * 100),
+          color: GITHUB_LANGUAGE_COLORS[name] || '#6e7681',
         }));
       }
     }

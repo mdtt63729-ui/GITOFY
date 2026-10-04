@@ -223,7 +223,7 @@ export const M3GalleryScreen: React.FC<M3GalleryScreenProps> = ({ onBack }) => {
               {sliderVal}%
             </span>
           </div>
-          <M3Slider value={sliderVal} onChange={setSliderVal} min={0} max={100} />
+          <M3Slider label="Slider Value" value={sliderVal} onChange={setSliderVal} min={0} max={100} />
         </section>
 
         {/* Text Field (§৫.৫) */}
