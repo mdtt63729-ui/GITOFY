@@ -10,6 +10,8 @@ export interface M3ChipProps {
   /** When false the selected chip draws no own background, so a parent can show an
    *  animated sliding indicator behind it (used by the Home filter chips). */
   showSelectedBackground?: boolean;
+  /** Tighter padding/gaps, so a row of chips fits without clipping. */
+  dense?: boolean;
   className?: string;
   count?: number;
 }
@@ -21,6 +23,7 @@ export const M3Chip: React.FC<M3ChipProps> = ({
   icon,
   showCheckmark = true,
   showSelectedBackground = true,
+  dense = false,
   className = '',
   count,
 }) => {
@@ -54,7 +57,7 @@ export const M3Chip: React.FC<M3ChipProps> = ({
         transform: isPressed && !settings.reduceMotion ? 'scale(0.94)' : 'scale(1)',
         transition: 'transform 0.18s cubic-bezier(.34,1.56,.64,1), background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease',
       }}
-      className={`h-8 px-3 rounded-lg inline-flex items-center gap-1.5 text-xs font-medium cursor-pointer select-none whitespace-nowrap focus:outline-none ${className}`}
+      className={`h-8 ${dense ? 'px-2.5' : 'px-3'} rounded-lg inline-flex items-center ${dense ? 'gap-1' : 'gap-1.5'} text-xs font-medium cursor-pointer select-none whitespace-nowrap focus:outline-none ${className}`}
     >
       {selected && showCheckmark ? (
         <svg

@@ -14,7 +14,9 @@ export interface Repository {
   languages?: Array<{ name: string; percentage: number; color: string }>;
   updated_at: string;
   size?: number;
-  owner: {
+  // Optional: repositories created locally, or restored from older storage,
+  // may not carry an owner. Use repoOwnerLogin()/repoOwnerAvatar() to read it.
+  owner?: {
     login: string;
     avatar_url: string;
   };

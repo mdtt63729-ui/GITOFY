@@ -1,16 +1,20 @@
 import React from 'react';
 import gitofyIcon from '../assets/gitofy_icon.png';
 
-/**
- * Lightweight first-launch visual splash inspired by the supplied reference video:
- * white canvas, soft cloud base, playful organic floating shapes and a restrained
- * page-indicator motion. No raster/video asset is required, keeping startup fast.
- */
 export interface SplashScreenProps {
   /** When true the splash fades out so the app can appear smoothly underneath. */
   exiting?: boolean;
 }
 
+/**
+ * Minimal startup splash.
+ *
+ * It deliberately carries NO onboarding elements — no page-indicator dots, no
+ * carousel artwork, no floating shapes. It is just the app mark on the black
+ * canvas (matching the native Android splash), so the ONLY onboarding the user
+ * ever sees is the real five-page `OnboardingScreen`. Previously this screen had
+ * its own dots and illustrations and read as a second onboarding.
+ */
 export const SplashScreen: React.FC<SplashScreenProps> = ({ exiting = false }) => {
   return (
     <div
@@ -18,41 +22,12 @@ export const SplashScreen: React.FC<SplashScreenProps> = ({ exiting = false }) =
       role="status"
       aria-label="Gitofy loading"
     >
-      <div className="splash-top-dots" aria-hidden="true">
-        <span className="active" />
-        <span />
-        <span />
-        <span />
-        <span />
-      </div>
-
-      <div className="splash-stage" aria-hidden="true">
-        <div className="splash-blob blob-blue"><i /><i /></div>
-        <div className="splash-blob blob-orange"><i /><i /></div>
-        <div className="splash-blob blob-coral"><i /><i /></div>
-        <div className="splash-mini mini-blue" />
-        <div className="splash-mini mini-yellow" />
-        <div className="splash-mini mini-coral" />
-        <div className="splash-phone">
-          <div className="splash-phone-screen" />
+      <div className="gitofy-splash-min">
+        <div className="gitofy-splash-mark">
+          <img src={gitofyIcon} alt="Gitofy" />
         </div>
-        <span className="splash-particle p1" />
-        <span className="splash-particle p2" />
-        <span className="splash-particle p3" />
-        <span className="splash-particle p4" />
-      </div>
-
-      <div className="splash-clouds" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-        <span />
-      </div>
-
-      <div className="splash-copy">
-        <div className="splash-logo-mark"><img src={gitofyIcon} alt="Gitofy" /></div>
-        <h1>Gitofy</h1>
-        <p>Fast, smooth GitHub management.</p>
+        <span className="gitofy-splash-name">Gitofy</span>
+        <span className="gitofy-splash-tag">Fast, smooth GitHub management.</span>
       </div>
     </div>
   );

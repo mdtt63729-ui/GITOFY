@@ -83,7 +83,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     <div className="flex-1 flex flex-col gitofy-scroll select-none">
       {/* Top Bar */}
       <div
-        className="sticky top-0 z-30 px-4 py-3 backdrop-blur-md border-b flex items-center justify-between"
+        className="sticky top-0 z-30 px-4 py-3 border-b flex items-center justify-between"
         style={{ backgroundColor: `${colors.surface}f0`, borderColor: colors.outlineVariant }}
       >
         <div className="flex items-center gap-2">

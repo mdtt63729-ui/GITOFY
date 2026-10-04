@@ -5,7 +5,7 @@ import { authRepository, type ProfileResult } from './authRepository';
 import { sessionManager, type SessionState } from './sessionManager';
 import { tokenRepository } from './tokenRepository';
 import { installAuthInterceptor } from './authFetch';
-import { DeviceFlowCancelled } from './deviceFlow';
+import { DeviceFlowCancelled, deviceFlowProvider } from './deviceFlow';
 import { AuthConfig, isClientConfigured } from './config';
 import { makeError, toAuthError } from './errors';
 import { trackError, trackFunnel } from './diagnostics';
@@ -378,7 +378,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Periodic lightweight health refresh (§7.3): daily + on foreground.
   useEffect(() => {
     const onVisible = () => {
-      if (document.visibilityState === 'visible' && sessionManager.isAuthenticated()) {
+      if (document.visibilityState !== 'visible') return;
+      // The user has just come back from the browser (where they entered the
+      // device code) — wake the poll loop immediately instead of waiting for the
+      // next interval, so the app signs in the moment they return.
+      deviceFlowProvider.wake.nudge();
+      if (sessionManager.isAuthenticated()) {
         void authRepository.validateActiveSession();
       }
     };

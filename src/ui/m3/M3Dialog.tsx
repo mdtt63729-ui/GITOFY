@@ -79,7 +79,7 @@ export const M3Dialog: React.FC<M3DialogProps> = ({
       {/* Scrim */}
       <div
         onClick={handleDismiss}
-        className={`absolute inset-0 bg-black/55 backdrop-blur-xs ${closing ? 'scrim-out' : 'scrim-in'}`}
+        className={`absolute inset-0 bg-black/55 ${closing ? 'scrim-out' : 'scrim-in'}`}
       />
 
       {/* Modal Dialog Card */}

@@ -49,6 +49,19 @@ export const WorkflowRunDetailScreen:React.FC<Props>=({repoName,workflow,initial
   const [actionBusy,setActionBusy]=useState(false); const [toast,setToast]=useState<string|null>(null); const logRef=useRef<HTMLDivElement|null>(null); const seenLogRef=useRef(''); const noChangeRef=useRef(0); const lastRunState=useRef<string>('');
   const [owner,repo]=useMemo(()=>{const p=repoName.split('/');return [p[0],p[1]||repoName]},[repoName]);
 
+  // Refs mirror the latest values so the polling callbacks can stay stable.
+  // They used to depend on `run` / `rawLog`, which those same callbacks update,
+  // so the effects re-ran forever — that was the lag and the slow loading.
+  const runRef=useRef<WorkflowRun|null>(initialRun||null);
+  const selectedJobRef=useRef<Job|null>(null);
+  const rawLogRef=useRef('');
+  const pausedRef=useRef(false);
+  const rateBannerRef=useRef<string|null>(null);
+  useEffect(()=>{runRef.current=run;},[run]);
+  useEffect(()=>{pausedRef.current=paused;},[paused]);
+  useEffect(()=>{rateBannerRef.current=rateBanner;},[rateBanner]);
+  useEffect(()=>{rawLogRef.current=rawLog;},[rawLog]);
+
   const mergeJobs=useCallback((incoming:Job[])=>setJobs(prev=>incoming.map(n=>{
     const old=prev.find(x=>x.id===n.id); if(!old) return n;
     if(rank(n.status)<rank(old.status)) return old;
@@ -56,18 +69,19 @@ export const WorkflowRunDetailScreen:React.FC<Props>=({repoName,workflow,initial
   })),[]);
 
   const loadSnapshot=useCallback(async(silent=true)=>{
-    if(!run) return;
+    const current=runRef.current;
+    if(!current) return;
     try{
       setConnection('polling');
-      const [rr,jj]=await Promise.all([fetchWorkflowRunWithMeta(owner,repo,run.id,token),fetchWorkflowRunJobsWithMeta(owner,repo,run.id,token)]);
+      const [rr,jj]=await Promise.all([fetchWorkflowRunWithMeta(owner,repo,current.id,token),fetchWorkflowRunJobsWithMeta(owner,repo,current.id,token)]);
       setRun(rr.run); mergeJobs(jj.jobs as Job[]); setUpdatedAt(Date.now()); setConnection('live'); setError(null);
       const rl=getGitHubRateLimitState(); if(rl.remaining!==null&&rl.limit&&rl.remaining/rl.limit<.05) setRateBanner('GitHub rate limit is very low. Log tailing is paused to protect your token.'); else if(rl.remaining!==null&&rl.limit&&rl.remaining/rl.limit<.2) setRateBanner('GitHub rate limit is getting low. Refresh intervals are stretched.'); else setRateBanner(null);
-      if(!selectedJobId&&jj.jobs.length) setSelectedJobId(jj.jobs[0].id);
+      setSelectedJobId(prev=>prev ?? (jj.jobs.length ? jj.jobs[0].id : null));
       if(lastRunState.current && lastRunState.current!==`${rr.run.status}:${rr.run.conclusion}` && rr.run.status==='completed') { triggerHaptic(rr.run.conclusion==='success'?'success':'error'); }
       lastRunState.current=`${rr.run.status}:${rr.run.conclusion}`;
     }catch(e){ setConnection('offline'); if(!silent) setError(e instanceof Error?e.message:'Could not load GitHub run.'); }
     finally{if(!silent)setLoading(false)}
-  },[run,owner,repo,token,selectedJobId,mergeJobs,triggerHaptic]);
+  },[owner,repo,token,mergeJobs,triggerHaptic]);
 
   useEffect(()=>{
     const relay=(import.meta as any).env?.VITE_GITOFY_RELAY_URL as string|undefined; const relayJwt=(import.meta as any).env?.VITE_GITOFY_RELAY_JWT as string|undefined;
@@ -77,18 +91,23 @@ export const WorkflowRunDetailScreen:React.FC<Props>=({repoName,workflow,initial
   },[settings.instantMode,run?.id,repoName,token,mergeJobs]);
 
   useEffect(()=>{if(!run){setLoading(false);return;} void loadSnapshot(false); const active=run.status==='queued'||run.status==='in_progress'||run.status==='waiting'; const factor=settings.liveRunsPolling==='battery'?2:settings.liveRunsPolling==='max'?0.65:1; const ms=Math.round((run.status==='queued'||run.status==='waiting'?5000:active?2500:30000)*factor); const t=window.setInterval(()=>void loadSnapshot(true),ms); return()=>window.clearInterval(t)},[run?.id,run?.status,loadSnapshot]);
-  useEffect(()=>{const t=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(t)},[]);
+  useEffect(()=>{const active=run?.status==='queued'||run?.status==='in_progress'||run?.status==='waiting';if(!active)return;const t=window.setInterval(()=>setNow(Date.now()),1000);return()=>window.clearInterval(t)},[run?.status]);
   useEffect(()=>{const onVis=()=>{if(document.visibilityState==='visible')void loadSnapshot(true)};document.addEventListener('visibilitychange',onVis);return()=>document.removeEventListener('visibilitychange',onVis)},[loadSnapshot]);
 
   const selectedJob=jobs.find(j=>j.id===selectedJobId)||null;
   const selectedStepObj=selectedJob?.steps.find(s=>s.number===selectedStep)||null;
+  useEffect(()=>{selectedJobRef.current=selectedJob;},[selectedJob]);
+
   const loadLogs=useCallback(async()=>{
-    if(!selectedJob||paused||document.visibilityState!=='visible'||rateBanner?.includes('very low'))return;
+    const job=selectedJobRef.current;
+    if(!job||pausedRef.current||document.visibilityState!=='visible'||rateBannerRef.current?.includes('very low'))return;
     try{
-      const text=await fetchJobLogsIncremental(owner,repo,selectedJob.id,token);
-      const tail=text.slice(-4000000); const sig=tail.slice(-4000); if(sig!==seenLogRef.current){setRawLog(text);seenLogRef.current=sig;noChangeRef.current=0}else noChangeRef.current+=1;
-    }catch(e){if(!rawLog)setError(e instanceof Error?e.message:'Could not load GitHub logs.')}
-  },[selectedJob,paused,owner,repo,token,rateBanner,rawLog]);
+      const text=await fetchJobLogsIncremental(owner,repo,job.id,token);
+      // Keep only a tail so parsing/rendering stays cheap.
+      const tail=text.slice(-1200000); const sig=tail.slice(-4000);
+      if(sig!==seenLogRef.current){setRawLog(tail);seenLogRef.current=sig;noChangeRef.current=0}else noChangeRef.current+=1;
+    }catch(e){if(!rawLogRef.current)setError(e instanceof Error?e.message:'Could not load GitHub logs.')}
+  },[owner,repo,token]);
   useEffect(()=>{if(!selectedJob)return; noChangeRef.current=0; seenLogRef.current=''; void loadLogs(); let delay=settings.liveRunsPolling==='battery'?4000:settings.liveRunsPolling==='max'?2000:2500; let timer:number; const tick=async()=>{await loadLogs(); delay=noChangeRef.current>=3?Math.min(8000,delay+2000):2_000; timer=window.setTimeout(tick,delay)}; timer=window.setTimeout(tick,delay); return()=>window.clearTimeout(timer)},[selectedJob?.id,loadLogs]);
 
   const lines=useMemo(()=>parseLines(rawLog),[rawLog]);
@@ -98,6 +117,16 @@ export const WorkflowRunDetailScreen:React.FC<Props>=({repoName,workflow,initial
     if(search){ try{const q=regex?new RegExp(search,caseSensitive?'':'i') : null; out=out.filter(l=>q?q.test(l.text):(caseSensitive?l.text.includes(search):l.text.toLowerCase().includes(search.toLowerCase())))}catch{} }
     return out;
   },[lines,showDebug,stepFilter,search,regex,caseSensitive]);
+
+  // Memoised so the once-a-second clock tick does not re-create (and therefore
+  // re-render) the whole log list.
+  const logLineNodes = useMemo(() => filtered.slice(-1500).map(l=>(
+    <div key={l.index} className={`flex gap-2 ${wrap?'whitespace-pre-wrap break-words':'whitespace-pre'}`} style={{color:l.level==='error'?'#ff8a80':l.level==='warning'?'#ffd166':l.level==='notice'?'#8bd5ff':'rgba(255,255,255,.82)'}}>
+      <span className="select-text shrink-0 text-white/25 text-right" style={{width:showLines?42:0,display:showLines?'block':'none'}}>{l.index+1}</span>
+      {showTs&&l.ts&&<span className="text-white/35 shrink-0">{l.ts}</span>}
+      <span className="select-text">{l.text}</span>
+    </div>
+  )), [filtered, wrap, showLines, showTs]);
   const errors=useMemo(()=>lines.map((l,i)=>l.level==='error'||l.text.toLowerCase().includes('error:')?i:-1).filter(i=>i>=0),[lines]);
   const scrollToBottom=()=>{const el=logRef.current;if(el){el.scrollTop=el.scrollHeight;setFollow(true)}};
   useEffect(()=>{if(follow&&!paused)requestAnimationFrame(scrollToBottom)},[filtered.length,follow,paused]);
@@ -108,7 +137,7 @@ export const WorkflowRunDetailScreen:React.FC<Props>=({repoName,workflow,initial
 
   const runTone=toneOf({status:run?.status||'queued',conclusion:run?.conclusion||null}); const runColor=colorFor(runTone,colors);
   return <div className="flex-1 flex flex-col gitofy-scroll select-none" style={{backgroundColor:colors.surface}}>
-    <div className="sticky top-0 z-30 px-3 py-2.5 backdrop-blur-md border-b" style={{backgroundColor:`${colors.surface}f5`,borderColor:colors.outlineVariant}}>
+    <div className="sticky top-0 z-30 px-3 py-2.5 border-b" style={{backgroundColor:`${colors.surface}f5`,borderColor:colors.outlineVariant}}>
       <div className="flex items-center gap-2"><M3IconButton aria-label="Back" onClick={onBack}><svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></M3IconButton><div className="min-w-0 flex-1"><h2 className="text-base font-black truncate">{workflow.name}</h2><p className="text-[10px] font-mono opacity-65 truncate">{repoName} · #{run?.run_number??'—'} · {run?.head_branch||'—'} · {run?.head_sha?.slice(0,7)||'—'}</p></div><span className="px-2 py-1 rounded-full text-[10px] font-black" style={{color:runColor,backgroundColor:`${runColor}22`}}>{statusText(runTone)}</span></div>
       <div className="mt-2 flex items-center gap-2 overflow-x-auto"><span className="px-2.5 py-1 rounded-full text-[10px] font-bold whitespace-nowrap" style={{backgroundColor:connection==='live'?colors.diffAddedContainer:connection==='offline'?colors.errorContainer:colors.tertiaryContainer,color:connection==='live'?colors.diffAdded:connection==='offline'?colors.error:colors.tertiary}}>● {connection==='live'?'Live':connection==='reconnecting'?'Reconnecting':connection==='offline'?'Offline':'Polling'}{connection!=='live'?` · Updated ${Math.max(0,Math.floor((Date.now()-updatedAt)/1000))}s ago`:''}</span><span className="text-[10px] font-mono opacity-55 whitespace-nowrap">Elapsed {duration(run?.created_at,run?.status==='completed'?run.updated_at:null,now)}</span><button className="text-[10px] font-bold underline whitespace-nowrap" onClick={()=>openExternal(run?.html_url)}>GitHub ↗</button></div>
     </div>
@@ -128,7 +157,7 @@ export const WorkflowRunDetailScreen:React.FC<Props>=({repoName,workflow,initial
           <div className="mt-1.5 flex gap-1.5 overflow-x-auto"><button className="text-[9px] text-white/70 bg-white/10 px-2 py-1 rounded-lg" onClick={()=>setStepFilter(null)}>{stepFilter===null?'All steps':`Step ${stepFilter}`}</button><button className="text-[9px] text-white/70 bg-white/10 px-2 py-1 rounded-lg" onClick={()=>setWrap(x=>!x)}>Wrap {wrap?'ON':'OFF'}</button><button className="text-[9px] text-white/70 bg-white/10 px-2 py-1 rounded-lg" onClick={()=>setShowLines(x=>!x)}>Lines {showLines?'ON':'OFF'}</button><button className="text-[9px] text-white/70 bg-white/10 px-2 py-1 rounded-lg" onClick={()=>setShowTs(x=>!x)}>Time {showTs?'ON':'OFF'}</button><button className="text-[9px] text-white/70 bg-white/10 px-2 py-1 rounded-lg" onClick={()=>setShowDebug(x=>!x)}>Debug {showDebug?'ON':'OFF'}</button><button className="text-[9px] text-white/70 bg-white/10 px-2 py-1 rounded-lg" onClick={()=>setFontSize(x=>Math.min(18,x+1))}>A+</button><button className="text-[9px] text-white/70 bg-white/10 px-2 py-1 rounded-lg" onClick={()=>setFontSize(x=>Math.max(8,x-1))}>A−</button><button className="text-[9px] text-white/70 bg-white/10 px-2 py-1 rounded-lg" onClick={exportLog}>Download</button><button className="text-[9px] text-white/70 bg-white/10 px-2 py-1 rounded-lg" onClick={()=>void shareText(rawLog)}>Share</button></div>
         </div>
         <div ref={logRef} onScroll={e=>{const el=e.currentTarget;const near=el.scrollHeight-el.scrollTop-el.clientHeight<40;if(!near)setFollow(false);else setFollow(true)}} className="max-h-[560px] overflow-auto p-2" style={{fontSize:`${fontSize}px`,fontFamily:'ui-monospace, SFMono-Regular, Menlo, monospace',lineHeight:1.55}}>
-          {filtered.length===0?<div className="p-5 text-center text-xs text-white/50">{rawLog?'No matching log lines.':'Waiting for GitHub log output…'}</div>:filtered.map(l=><div key={l.index} className={`flex gap-2 ${wrap?'whitespace-pre-wrap break-words':'whitespace-pre'}`} style={{color:l.level==='error'?'#ff8a80':l.level==='warning'?'#ffd166':l.level==='notice'?'#8bd5ff':'rgba(255,255,255,.82)'}}><span className="select-text shrink-0 text-white/25 text-right" style={{width:showLines?42:0,display:showLines?'block':'none'}}>{l.index+1}</span>{showTs&&l.ts&&<span className="text-white/35 shrink-0">{l.ts}</span>}<span className="select-text">{l.text}</span></div>)}
+          {filtered.length===0?<div className="p-5 text-center text-xs text-white/50">{rawLog?'No matching log lines.':'Waiting for GitHub log output…'}</div>:logLineNodes}
         </div>
         {!follow&&<button className="w-full py-2 text-[10px] font-black" style={{backgroundColor:colors.primary,color:colors.onPrimary}} onClick={scrollToBottom}>↓ New lines · jump to bottom</button>}
       </div>}

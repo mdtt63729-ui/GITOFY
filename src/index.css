@@ -637,31 +637,35 @@ html[data-ui-mode='nxt'] body {
  * ------------------------------------------------------------------ */
 
 /* Large app bar that collapses smoothly while scrolling (scroll animation). */
+/* The collapsing app bar animates transform/opacity ONLY.
+   It used to animate padding and font-size, which forces a full text re-layout
+   on every frame of the animation — that was the laggy header animation while
+   scrolling. The bar height is now constant, so scrolling never shifts layout. */
 .gitofy-appbar {
   padding-top: max(12px, env(safe-area-inset-top));
   padding-bottom: 8px;
-  transition: padding 300ms cubic-bezier(.2,0,0,1), box-shadow 300ms ease,
-              background-color 150ms ease, border-color 150ms ease;
+  transition: box-shadow 300ms ease, background-color 150ms ease, border-color 150ms ease;
 }
 .gitofy-appbar-compact {
-  padding-top: max(7px, env(safe-area-inset-top));
-  padding-bottom: 7px;
   box-shadow: 0 6px 18px -12px rgba(0,0,0,.45);
 }
 .gitofy-appbar-subtitle {
   max-height: 22px;
   opacity: 1;
-  transition: opacity 220ms ease, max-height 300ms cubic-bezier(.2,0,0,1),
-              transform 300ms cubic-bezier(.2,0,0,1);
+  transition: opacity 220ms ease, transform 300ms cubic-bezier(.2,0,0,1);
 }
 .gitofy-appbar-compact .gitofy-appbar-subtitle {
-  max-height: 0;
   opacity: 0;
   transform: translateY(-4px);
-  overflow: hidden;
+  pointer-events: none;
 }
-.gitofy-appbar .gitofy-wordmark { transition: font-size 300ms cubic-bezier(.2,0,0,1); }
-.gitofy-appbar-compact .gitofy-wordmark { font-size: 1.2rem; }
+.gitofy-appbar .gitofy-wordmark {
+  display: inline-block;
+  transform-origin: left center;
+  transition: transform 300ms cubic-bezier(.2,0,0,1);
+  will-change: transform;
+}
+.gitofy-appbar-compact .gitofy-wordmark { transform: scale(0.775); }
 
 /* Animated sliding indicator behind the Home filter chips (All/Private/Public/Pinned). */
 .filter-chip-indicator {
@@ -853,4 +857,96 @@ html[data-ui-mode='nxt'] button[data-m3='icon-button'] {
   border-radius: 999px;
   background: linear-gradient(135deg, rgba(138, 75, 255, .26), rgba(138, 75, 255, .03));
   box-shadow: 0 10px 22px -12px rgba(138, 75, 255, .5);
+}
+
+/* ------------------------------------------------------------------ *
+ * Minimal startup splash — the app mark only, no onboarding elements.
+ * ------------------------------------------------------------------ */
+.gitofy-splash-min {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+}
+.gitofy-splash-mark {
+  width: 86px;
+  height: 86px;
+  border-radius: 26px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #17102F;
+  box-shadow: 0 20px 48px -20px rgba(138, 75, 255, .95);
+  animation: splashMarkIn 620ms cubic-bezier(.16,.84,.24,1) both;
+}
+.gitofy-splash-mark img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gitofy-splash-name {
+  font-size: 1.65rem;
+  font-weight: 700;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+  animation: splashFadeUp 620ms 110ms cubic-bezier(.16,.84,.24,1) both;
+}
+.gitofy-splash-tag {
+  font-size: .74rem;
+  color: rgba(255, 255, 255, .55);
+  animation: splashFadeUp 620ms 210ms cubic-bezier(.16,.84,.24,1) both;
+}
+@keyframes splashMarkIn { from { opacity: 0; transform: scale(.82); } to { opacity: 1; transform: none; } }
+@keyframes splashFadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+
+/* ------------------------------------------------------------------
+ * Skeleton loading + smooth result reveal
+ * ------------------------------------------------------------------ */
+
+/* The sweep only animates `transform`, so the compositor runs it and it can
+   never jank the scroll. */
+.gitofy-skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px;
+  background-color: rgba(128, 132, 148, 0.16);
+}
+.gitofy-skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background-image: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  animation: gitofySkeletonSweep 1.45s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  will-change: transform;
+}
+html[data-ui-mode='nxt'] .gitofy-skeleton { background-color: rgba(138, 75, 255, 0.10); }
+html[data-ui-mode='nxt'] .gitofy-skeleton::after {
+  background-image: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.85), transparent);
+}
+@keyframes gitofySkeletonSweep { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+/* Results fade in when they arrive. Transform + opacity only, so it is smooth. */
+.gitofy-reveal { animation: gitofyReveal 320ms cubic-bezier(0.22, 0.61, 0.36, 1) both; }
+@keyframes gitofyReveal { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+.gitofy-reveal-stagger > * { animation: gitofyReveal 320ms cubic-bezier(0.22, 0.61, 0.36, 1) both; }
+.gitofy-reveal-stagger > *:nth-child(1) { animation-delay: 0ms; }
+.gitofy-reveal-stagger > *:nth-child(2) { animation-delay: 45ms; }
+.gitofy-reveal-stagger > *:nth-child(3) { animation-delay: 90ms; }
+.gitofy-reveal-stagger > *:nth-child(4) { animation-delay: 135ms; }
+.gitofy-reveal-stagger > *:nth-child(5) { animation-delay: 180ms; }
+.gitofy-reveal-stagger > *:nth-child(6) { animation-delay: 225ms; }
+.gitofy-reveal-stagger > *:nth-child(7) { animation-delay: 270ms; }
+.gitofy-reveal-stagger > *:nth-child(8) { animation-delay: 315ms; }
+.gitofy-reveal-stagger > *:nth-child(9) { animation-delay: 360ms; }
+.gitofy-reveal-stagger > *:nth-child(10) { animation-delay: 360ms; }
+.gitofy-reveal-stagger > *:nth-child(11) { animation-delay: 360ms; }
+.gitofy-reveal-stagger > *:nth-child(12) { animation-delay: 360ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  .gitofy-reveal,
+  .gitofy-reveal-stagger > * { animation: none !important; }
+  .gitofy-skeleton::after { animation: none !important; }
 }

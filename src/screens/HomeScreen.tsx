@@ -6,6 +6,7 @@ import { M3Chip } from '../ui/m3/M3Chip';
 import { M3Checkbox } from '../ui/m3/M3Checkbox';
 import { M3Skeleton } from '../ui/m3/M3Skeleton';
 import { M3IconButton } from '../ui/m3/M3IconButton';
+import { repoOwnerLogin, repoOwnerAvatar } from '../utils/repo';
 
 export interface HomeScreenProps {
   repos: Repository[];
@@ -188,7 +189,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     >
       {/* Top App Bar */}
       <div
-        className={`gitofy-appbar sticky top-0 z-30 px-5 backdrop-blur-md border-b ${headerCompact ? 'gitofy-appbar-compact' : ''}`}
+        className={`gitofy-appbar sticky top-0 z-30 px-5 border-b ${headerCompact ? 'gitofy-appbar-compact' : ''}`}
         style={{
           backgroundColor: `${colors.surface}f5`,
           borderColor: colors.outlineVariant,
@@ -332,7 +333,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       </div>
 
       {/* Main Content Area */}
-      <div className="px-5 pt-3 pb-32 flex flex-col gap-3">
+      <div className="px-5 pt-3 pb-44 flex flex-col gap-3">
         {/* GitHub PAT Setup Prompt Card if not connected */}
         {!settings.personalAccessToken && (
           <div
@@ -426,7 +427,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
         {/* Filter Chips — with an animated sliding indicator */}
         {!isDeleteMode && (
-          <div className="relative flex items-center gap-2 overflow-x-auto py-1 scrollbar-none">
+          <div className="relative flex items-center gap-1.5 overflow-x-auto py-1 pr-1 scrollbar-none">
             <span
               aria-hidden="true"
               className="filter-chip-indicator"
@@ -441,6 +442,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 label="All"
                 selected={filter === 'all'}
                 showSelectedBackground={false}
+                dense
                 onClick={() => setFilter('all')}
                 count={repos.length}
               />
@@ -450,6 +452,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 label="Private"
                 selected={filter === 'private'}
                 showSelectedBackground={false}
+                dense
                 onClick={() => setFilter('private')}
                 count={repos.filter((r) => r.private).length}
               />
@@ -459,6 +462,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 label="Public"
                 selected={filter === 'public'}
                 showSelectedBackground={false}
+                dense
                 onClick={() => setFilter('public')}
                 count={repos.filter((r) => !r.private).length}
               />
@@ -468,6 +472,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 label="Pinned"
                 selected={filter === 'pinned'}
                 showSelectedBackground={false}
+                dense
                 onClick={() => setFilter('pinned')}
                 count={repos.filter((r) => r.pinned).length}
               />
@@ -511,7 +516,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </M3Button>
           </div>
         ) : (
-          <div className="flex flex-col gap-2.5">
+          <div className="gitofy-reveal-stagger flex flex-col gap-2.5">
             {filteredRepos.map((repo) => {
               const isSelected = selectedRepoIds.includes(repo.id);
 
@@ -577,8 +582,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     <div className="flex-shrink-0 mt-0.5">
                       {repo.owner?.avatar_url ? (
                         <img
-                          src={repo.owner.avatar_url}
-                          alt={repo.owner.login}
+                          src={repoOwnerAvatar(repo)}
+                          alt={repoOwnerLogin(repo)}
                           className="w-9 h-9 rounded-xl border object-cover shadow-xs"
                           style={{ borderColor: colors.outlineVariant }}
                         />

@@ -46,7 +46,7 @@ export function makeError(
 }
 
 /** Maps a GitHub OAuth device-flow `error` string to our taxonomy (§5.3). */
-export function fromDeviceFlowError(error: string): AuthError {
+export function fromDeviceFlowError(error: string, detail?: string): AuthError {
   switch (error) {
     case 'authorization_pending':
       // Not a terminal error — the poller treats this as "keep waiting".
@@ -70,7 +70,7 @@ export function fromDeviceFlowError(error: string): AuthError {
     case 'rate_limit_exceeded':
       return makeError('E_RATE');
     default:
-      return makeError('E_UNKNOWN', { diagnostic: `DEVFLOW_${error || 'unknown'}` });
+      return makeError('E_UNKNOWN', { diagnostic: `DEVFLOW_${error || 'unknown'}${detail ? ` · ${detail}` : ''}` });
   }
 }
 

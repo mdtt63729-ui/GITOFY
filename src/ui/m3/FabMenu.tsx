@@ -120,10 +120,14 @@ export const FabMenu: React.FC<FabMenuProps> = ({
 
       {/* FAB and Items Container anchored at bottom right */}
       <div
-        className={`gitofy-fab fixed right-4 z-50 flex flex-col items-end pointer-events-none ${
+        className={`gitofy-fab fixed right-4 z-[70] flex flex-col items-end ${
           visible || isOpen ? 'translate-x-0 opacity-100' : 'translate-x-24 opacity-0'
         }`}
         style={{
+          // Inline, so no stylesheet rule can win. The container must ignore
+          // touches (its empty area used to swallow scrolls), while the button
+          // below re-enables them for itself.
+          pointerEvents: 'none',
           bottom: 'calc(92px + env(safe-area-inset-bottom))',
           // Explicit transition properties (instead of transition-all) keep the
           // WebView compositing only transform/opacity, which removes the lag.
@@ -137,9 +141,8 @@ export const FabMenu: React.FC<FabMenuProps> = ({
       >
         {/* Menu Items Stack (Section 5.4 & 6.2) */}
         <div
-          className={`flex flex-col-reverse items-end gap-2.5 mb-3 pointer-events-none ${
-            isOpen ? 'pointer-events-auto' : ''
-          }`}
+          className="flex flex-col-reverse items-end gap-2.5 mb-3"
+          style={{ pointerEvents: isOpen ? 'auto' : 'none' }}
         >
           {menuItems.map((item, index) => {
             // Stagger calculation: index 0 (closest) opens first; when closing, furthest (index 3) closes first!
@@ -199,8 +202,10 @@ export const FabMenu: React.FC<FabMenuProps> = ({
           type="button"
           onClick={toggleOpen}
           aria-label={isOpen ? 'Close menu' : 'Open quick actions menu'}
-          className="pointer-events-auto relative w-14 h-14 rounded-2xl flex items-center justify-center shadow-xl border cursor-pointer select-none focus:outline-none active:scale-95"
+          className="relative w-14 h-14 rounded-2xl flex items-center justify-center shadow-xl border cursor-pointer select-none focus:outline-none active:scale-95"
           style={{
+            pointerEvents: 'auto',
+            touchAction: 'manipulation',
             backgroundColor: isOpen ? colors.primary : colors.primaryContainer,
             color: isOpen ? colors.onPrimary : colors.onPrimaryContainer,
             borderColor: colors.outlineVariant,

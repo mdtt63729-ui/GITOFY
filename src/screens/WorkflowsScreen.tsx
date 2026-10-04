@@ -12,6 +12,7 @@ import {
   rerunWorkflowRun,
   cancelWorkflowRun,
 } from '../git/githubApi';
+import { SkeletonRows } from '../ui/m3/SkeletonRows';
 
 export interface WorkflowsScreenProps {
   repoName: string;
@@ -239,7 +240,7 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
     <div className="flex-1 flex flex-col gitofy-scroll select-none animate-fade-in">
       {/* Top App Bar */}
       <div
-        className="sticky top-0 z-30 px-4 py-3 backdrop-blur-md border-b flex items-center justify-between"
+        className="sticky top-0 z-30 px-4 py-3 border-b flex items-center justify-between"
         style={{
           backgroundColor: `${colors.surface}f0`,
           borderColor: colors.outlineVariant,
@@ -457,13 +458,7 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
             </div>
 
             {isLoadingRuns ? (
-              <div className="p-8 text-center text-xs opacity-70 flex flex-col items-center gap-2">
-                <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24" fill="none" style={{ color: colors.primary }}>
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                <span>Fetching real runs from GitHub Actions...</span>
-              </div>
+              <SkeletonRows count={5} height={78} />
             ) : runs.length === 0 ? (
               <div
                 className="p-6 rounded-3xl border border-dashed text-center flex flex-col items-center gap-2.5"
@@ -493,7 +488,7 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
                 </M3Button>
               </div>
             ) : (
-              <div className="flex flex-col gap-2.5">
+              <div className="gitofy-reveal-stagger flex flex-col gap-2.5">
                 {runs.map((run) => {
                   const isInProgress = run.status === 'in_progress' || run.status === 'queued';
                   const isSuccess = run.conclusion === 'success';

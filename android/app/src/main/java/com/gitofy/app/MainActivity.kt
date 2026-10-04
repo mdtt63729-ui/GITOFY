@@ -73,24 +73,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        /** Opens a URL in a Chrome Custom Tab (WebView is forbidden for OAuth, §10.1). */
+        /** Opens a URL in the user's DEFAULT browser (not a Custom Tab). */
         @JavascriptInterface
         fun openCustomTab(url: String) {
-            runOnUiThread {
-                try {
-                    val intent = CustomTabsIntent.Builder()
-                        .setShowTitle(true)
-                        .build()
-                    intent.launchUrl(this@MainActivity, Uri.parse(url))
-                } catch (e: Exception) {
-                    // Fall back to the default browser, then to a plain VIEW intent.
-                    try {
-                        startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
-                    } catch (_: Exception) {
-                        android.util.Log.e("GitofyWeb", "No browser available for $url")
-                    }
-                }
-            }
+            runOnUiThread { openExternalUrl(url) }
         }
 
         /** Copies text, marking it sensitive and auto-clearing it after 2 minutes (§10.1). */
@@ -222,7 +208,16 @@ class MainActivity : AppCompatActivity() {
                 JSONObject().put("status", status).put("body", text).toString()
             } catch (e: Exception) {
                 android.util.Log.e("GitofyWeb", "oauthPost failed: ${e.javaClass.simpleName} ${e.message}", e)
-                JSONObject().put("status", 0).put("body", "{\"error\":\"network_error\"}").toString()
+                JSONObject()
+                    .put("status", 0)
+                    .put(
+                        "body",
+                        JSONObject()
+                            .put("error", "network_error")
+                            .put("detail", "${e.javaClass.simpleName}: ${e.message ?: ""}")
+                            .toString()
+                    )
+                    .toString()
             }
         }
 
@@ -273,7 +268,11 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
                 val stream = if (status in 200..299) conn.inputStream else conn.errorStream
-                val text = stream?.bufferedReader()?.use { it.readText() } ?: ""
+                val raw = stream?.bufferedReader()?.use { it.readText() } ?: ""
+                // Cap the payload that crosses the JS bridge — a multi-megabyte job
+                // log is very slow to serialise and transfer, which made the log
+                // viewer lag. The app only ever shows a tail anyway.
+                val text = if (raw.length > 1_200_000) raw.substring(raw.length - 1_200_000) else raw
                 JSONObject().put("status", status).put("body", text).toString()
             } catch (e: Exception) {
                 JSONObject().put("status", 0).put("body", "{\"error\":\"network_error\"}").toString()
@@ -473,15 +472,18 @@ class MainActivity : AppCompatActivity() {
         return out
     }
 
-    /** Opens a URL outside the app (Chrome Custom Tab, else any browser). */
+    /** Opens a URL in the user's DEFAULT browser (Custom Tab only as a fallback). */
     private fun openExternalUrl(url: String) {
         if (url.isBlank()) return
         try {
-            val intent = CustomTabsIntent.Builder().setShowTitle(true).build()
-            intent.launchUrl(this, Uri.parse(url))
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            startActivity(intent)
         } catch (e: Exception) {
             try {
-                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                val tab = CustomTabsIntent.Builder().setShowTitle(true).build()
+                tab.launchUrl(this, Uri.parse(url))
             } catch (_: Exception) {
                 android.util.Log.e("GitofyWeb", "No browser available for $url")
             }
@@ -503,6 +505,13 @@ class MainActivity : AppCompatActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) applyImmersiveMode()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Re-assert fullscreen when returning from the browser (after entering the
+        // GitHub device code), where the system bars may have reappeared.
+        applyImmersiveMode()
     }
 
     @SuppressLint("SetJavaScriptEnabled")

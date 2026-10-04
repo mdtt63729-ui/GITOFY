@@ -27,6 +27,7 @@ interface RawDeviceCode {
   interval?: number;
   error?: string;
   error_description?: string;
+  detail?: string;
 }
 
 export class DeviceFlowCancelled extends Error {
@@ -138,9 +139,12 @@ export class GitHubDeviceFlowProvider {
     // `scope` parameter is omitted for them (it would otherwise be rejected).
     const body: Record<string, string> = { client_id: AuthConfig.clientId };
     if (!isGitHubApp()) body.scope = scope;
-    const res = await oauthFormPost(AuthConfig.endpoints.deviceCode, body, signal);
-    const data = res.json as RawDeviceCode;
-    if (data.error) throw fromDeviceFlowError(data.error);
+    let data = (await oauthFormPost(AuthConfig.endpoints.deviceCode, body, signal)).json as RawDeviceCode;
+    // One retry if the native transport reported a network error.
+    if (data.error === 'network_error') {
+      data = (await oauthFormPost(AuthConfig.endpoints.deviceCode, body, signal)).json as RawDeviceCode;
+    }
+    if (data.error) throw fromDeviceFlowError(data.error, data.detail);
     if (!data.device_code || !data.user_code) {
       throw makeError('E_CONFIG', { diagnostic: 'DEVFLOW_BAD_RESPONSE' });
     }

@@ -1,4 +1,5 @@
 import { Repository, WorkflowItem, WorkflowRun, InboxItem, DiffSummary, GitHubRelease } from '../types';
+import { repoOwnerLogin, repoOwnerAvatar } from '../utils/repo';
 
 /**
  * Fetches real GitHub Actions workflows for a repository
@@ -293,7 +294,7 @@ export async function fetchUserActivityInbox(
     candidates.map(async (repo) => {
       try {
         const res = await fetch(
-          `https://api.github.com/repos/${repo.owner.login}/${repo.name}/actions/runs?per_page=8`,
+          `https://api.github.com/repos/${repoOwnerLogin(repo)}/${repo.name}/actions/runs?per_page=8`,
           { headers }
         );
         if (!res.ok) return [];
@@ -519,7 +520,7 @@ export async function fetchUserRepos(token: string): Promise<Repository[]> {
       updated_at: r.updated_at,
       size: Number(r.size || 0),
       owner: {
-        login: r.owner?.login || '',
+        login: r.owner?.login || (r.full_name ? r.full_name.split('/')[0] : ''),
         avatar_url: r.owner?.avatar_url || '',
       },
       last_commit: {
@@ -664,7 +665,7 @@ export async function createGitHubRepo(
     language: data.language || r.language || null,
     updated_at: r.updated_at || new Date().toISOString(),
     owner: {
-      login: r.owner?.login || '',
+      login: r.owner?.login || (r.full_name ? r.full_name.split('/')[0] : ''),
       avatar_url: r.owner?.avatar_url || '',
     },
     last_commit: {

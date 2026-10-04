@@ -65,7 +65,7 @@ export const MotionLabScreen: React.FC<MotionLabScreenProps> = ({ onBack }) => {
     >
       {/* Top Bar */}
       <div
-        className="sticky top-0 z-30 px-4 py-3 border-b flex items-center justify-between backdrop-blur-md"
+        className="sticky top-0 z-30 px-4 py-3 border-b flex items-center justify-between"
         style={{
           backgroundColor: `${colors.surface}f0`,
           borderColor: colors.outlineVariant,

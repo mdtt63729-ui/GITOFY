@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Same as the base Theme.Gitofy, plus the display-cutout mode so the
+         WebView truly fills the screen on phones with a notch / punch-hole.
+         (Styles do not merge across resource qualifiers, so every item is
+         repeated here.) -->
+    <style name="Theme.Gitofy" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <item name="android:windowBackground">#F1F2FC</item>
+        <item name="colorPrimary">@color/pink_primary</item>
+        <item name="colorPrimaryVariant">@color/pink_primary_container</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorSecondary">@color/violet_secondary</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+</resources>

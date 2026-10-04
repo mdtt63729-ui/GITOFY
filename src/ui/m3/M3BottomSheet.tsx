@@ -59,7 +59,7 @@ export const M3BottomSheet: React.FC<M3BottomSheetProps> = ({
           if (settings.haptics) triggerHaptic('tick');
           onClose();
         }}
-        className={`absolute inset-0 bg-black/50 backdrop-blur-xs ${closing ? 'scrim-out' : 'scrim-in'}`}
+        className={`absolute inset-0 bg-black/50 ${closing ? 'scrim-out' : 'scrim-in'}`}
       />
 
       {/* Sheet Modal */}

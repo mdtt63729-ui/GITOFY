@@ -5,6 +5,8 @@ import { Repository, GitHubRelease, ReleaseAsset } from '../types';
 import { M3Button } from '../ui/m3/M3Button';
 import { M3IconButton } from '../ui/m3/M3IconButton';
 import { fetchRepoReleases, fetchRepoLanguages } from '../git/githubApi';
+import { repoOwnerLogin, repoOwnerAvatar } from '../utils/repo';
+import { SkeletonRows } from '../ui/m3/SkeletonRows';
 
 export interface RepoDashboardScreenProps {
   repo: Repository;
@@ -72,7 +74,7 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
   // Load real language breakdown on mount
   useEffect(() => {
     setActiveLanguages(repo.languages || []);
-    fetchRepoLanguages(repo.owner.login, repo.name, settings.personalAccessToken).then((langs) => {
+    fetchRepoLanguages(repoOwnerLogin(repo), repo.name, settings.personalAccessToken).then((langs) => {
       if (langs && langs.length > 0) {
         setActiveLanguages(
           langs.map((l) => ({
@@ -103,7 +105,7 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
     setIsLoadingReleases(true);
     try {
       const data = await fetchRepoReleases(
-        repo.owner.login,
+        repoOwnerLogin(repo),
         repo.name,
         settings.personalAccessToken
       );
@@ -368,7 +370,7 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
     <div className="flex-1 flex flex-col gitofy-scroll select-none animate-fade-in">
       {/* Top Bar */}
       <div
-        className="sticky top-0 z-30 px-4 py-3 backdrop-blur-md border-b flex items-center justify-between"
+        className="sticky top-0 z-30 px-4 py-3 border-b flex items-center justify-between"
         style={{
           backgroundColor: `${colors.surface}f0`,
           borderColor: colors.outlineVariant,
@@ -691,13 +693,7 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
             </div>
 
             {isLoadingReleases ? (
-              <div className="p-8 text-center text-xs opacity-70 flex flex-col items-center gap-2">
-                <svg className="animate-spin h-6 w-6" viewBox="0 0 24 24" fill="none" style={{ color: colors.primary }}>
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                </svg>
-                <span>Fetching real releases from GitHub...</span>
-              </div>
+              <SkeletonRows count={3} height={112} />
             ) : releases.length === 0 ? (
               <div
                 className="p-6 rounded-3xl border border-dashed text-center flex flex-col items-center gap-3"
@@ -722,7 +718,7 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
                 </M3Button>
               </div>
             ) : (
-              <div className="flex flex-col gap-4">
+              <div className="gitofy-reveal-stagger flex flex-col gap-4">
                 {releases.map((rel) => (
                   <div
                     key={rel.id}

@@ -279,3 +279,89 @@ pre-populated, a plain Android Studio / Gradle build also works.
 - Typography: Josefin Sans is now the app-wide font (weights 400-700), applied to
   every element so no other typeface is used. Noto Sans Bengali follows it in the
   stack because Josefin Sans has no Bengali glyphs.
+
+## One onboarding only (this revision)
+
+The in-app splash screen had its own page-indicator dots and carousel artwork, so
+it read as a second onboarding right before the real one. It is now a minimal
+splash — just the app mark and the wordmark on the black canvas, matching the
+native splash — so the ONLY onboarding the user sees is the five-page
+`OnboardingScreen`. The onboarding completion flag was also bumped
+(`gitofy.onboarded.v2`) so the five pages are shown once after this update.
+
+## Home screen fit (this revision)
+
+- The filter chip row was clipped at the right edge (the "Pinned" chip showed as
+  "Pinr"). The chips now use a dense layout (`M3Chip dense`) with a tighter gap
+  and a small right padding, so all four fit on screen.
+- The bottom padding of the repository list was increased (`pb-32` -> `pb-44`) so
+  the floating bottom navigation and the FAB no longer cover the last card.
+
+## OTP login: default browser, instant resume, fullscreen (this revision)
+
+1. **GitHub opens in the DEFAULT browser.** The native `openCustomTab` bridge and
+   `openExternalUrl` now launch a plain `ACTION_VIEW` intent (your default
+   browser) instead of a Chrome Custom Tab; the Custom Tab is only a fallback.
+
+2. **The app signs in the moment you come back.** When the app returns to the
+   foreground (after you enter the code in the browser) it now wakes the
+   device-flow poll loop immediately (`deviceFlowProvider.wake.nudge()`), instead
+   of waiting for the next poll interval. So you no longer have to wait, or keep
+   the app open.
+
+3. **Device-flow diagnostics + retry.** If the native OAuth call fails it now
+   returns the exception (`"detail": "SomeException: message"`) and the app shows
+   it under the error code, and the device-code request is retried once. This
+   makes the exact cause of any remaining `DEVFLOW_network_error` visible.
+
+4. **Fullscreen.** Immersive mode is re-applied in `onResume` (so the bars stay
+   hidden when returning from the browser), and a `values-v27` theme adds
+   `windowLayoutInDisplayCutoutMode=shortEdges` so the content fills the screen on
+   phones with a notch / punch-hole.
+
+## Performance: scroll lag, step logs, workflow steps (this revision)
+
+1. **The real cause of the workflow/step lag was an effect loop.** In
+   `WorkflowRunDetailScreen` the polling callbacks (`loadSnapshot`, `loadLogs`)
+   listed `run` / `selectedJob` / `rawLog` in their `useCallback` deps — the very
+   state those callbacks write. Every fetch produced a new `run`/`rawLog` object,
+   which recreated the callback, which re-ran the effect, which fetched again...
+   an endless fetch + re-render loop. Both callbacks now read the latest values
+   from refs, so they are stable and the effects only run on real changes.
+
+2. **Scroll lag.** `backdrop-blur` on the sticky headers forces the WebView to
+   re-blur the whole backdrop every frame. All `backdrop-blur-*` classes were
+   removed app-wide (the headers were already ~95% opaque, so they look the same).
+
+3. **Log payload + rendering.** The native bridge now caps a fetched log to its
+   last ~1.2 MB (a multi-MB string is very slow to serialise across the JS
+   bridge), the app keeps a 1.2 MB tail, only the last 1500 lines are rendered,
+   and the log line elements are memoised so the once-a-second clock no longer
+   re-renders the whole list. The clock now only ticks while a run is active.
+
+## Skeletons, smooth reveal, delete crash, header + FAB (this revision)
+
+1. **"Deletion failed — Cannot read properties of undefined (reading 'login')".**
+   Some repository objects (newly created locally, or restored from older
+   storage) have no `owner`, so every `repo.owner.login` read could throw.
+   Added `src/utils/repo.ts` (`repoOwnerLogin` / `repoOwnerAvatar`) and routed
+   every owner read through it; `Repository.owner` is now optional and the API
+   mappings fall back to the first segment of `full_name`.
+
+2. **Header animation was laggy while scrolling.** The collapsing app bar
+   animated `padding` and `font-size`, which forces a full text re-layout every
+   frame. It now animates only `transform`/`opacity` (the wordmark scales, the
+   subtitle fades) and the bar height stays constant, so scrolling never shifts
+   layout.
+
+3. **Skeleton loading + smooth reveal.** New `.gitofy-skeleton` shimmer (a
+   `transform`-only sweep, so it cannot jank) and `.gitofy-reveal` /
+   `.gitofy-reveal-stagger` fade-in utilities, plus a reusable `SkeletonRows`
+   component. Applied to: the repo list (Home), the Files tree, the Commits
+   list and file-open (RepoCode), the Releases list (RepoDashboard) and the
+   workflow runs list (Workflows). Results now fade in as they arrive; the
+   skeleton runs until the data is there.
+
+4. **FAB menu.** Its hit-testing is now set inline (`pointerEvents: none` on the
+   container, `auto` on the button and on the open item stack) so no stylesheet
+   rule can leave the button unclickable, and the container moved to `z-[70]`.

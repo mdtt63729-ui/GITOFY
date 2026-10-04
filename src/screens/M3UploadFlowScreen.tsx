@@ -10,6 +10,7 @@ import { M3Button } from '../ui/m3/M3Button';
 import { M3IconButton } from '../ui/m3/M3IconButton';
 import { M3Dialog } from '../ui/m3/M3Dialog';
 import { M3Chip } from '../ui/m3/M3Chip';
+import { repoOwnerLogin, repoOwnerAvatar } from '../utils/repo';
 
 export type FlowStage = 'calculating' | 'diff_review' | 'uploading' | 'success' | 'error';
 
@@ -136,7 +137,7 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
         let remoteTreeMap: Record<string, { sha: string; size?: number }> = {};
         if (settings.personalAccessToken) {
           remoteTreeMap = await fetchRemoteTreeMap(
-            repo.owner.login,
+            repoOwnerLogin(repo),
             repo.name,
             repo.default_branch || settings.defaultBranch || 'main',
             settings.personalAccessToken
@@ -191,7 +192,7 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
 
     try {
       const result = await gitUploadEngine.executeUpload(zipFile, {
-        repoOwner: repo.owner.login,
+        repoOwner: repoOwnerLogin(repo),
         repoName: repo.name,
         branch: repo.default_branch || settings.defaultBranch || 'main',
         commitMessage,

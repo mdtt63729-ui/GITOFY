@@ -66,7 +66,7 @@ export const InboxScreen: React.FC<InboxScreenProps> = ({
     >
       {/* Header */}
       <div
-        className="sticky top-0 z-30 px-5 pt-3 pb-2 backdrop-blur-md border-b flex items-center justify-between"
+        className="sticky top-0 z-30 px-5 pt-3 pb-2 border-b flex items-center justify-between"
         style={{
           backgroundColor: `${colors.surface}f0`,
           borderColor: colors.outlineVariant,

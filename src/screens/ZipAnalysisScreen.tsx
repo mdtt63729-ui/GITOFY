@@ -37,7 +37,7 @@ export const ZipAnalysisScreen: React.FC<ZipAnalysisScreenProps> = ({
     <div className="flex-1 flex flex-col gitofy-scroll select-none">
       {/* Top Bar */}
       <div
-        className="sticky top-0 z-30 px-4 py-3 backdrop-blur-md border-b flex items-center justify-between"
+        className="sticky top-0 z-30 px-4 py-3 border-b flex items-center justify-between"
         style={{
           backgroundColor: `${colors.surface}f0`,
           borderColor: colors.outlineVariant,
@@ -261,7 +261,7 @@ export const ZipAnalysisScreen: React.FC<ZipAnalysisScreenProps> = ({
 
       {/* Sticky Bottom Continue Button */}
       <div
-        className="fixed left-0 right-0 bottom-0 z-40 p-4 border-t backdrop-blur-md flex justify-center"
+        className="fixed left-0 right-0 bottom-0 z-40 p-4 border-t flex justify-center"
         style={{
           backgroundColor: `${colors.surface}f5`,
           borderColor: colors.outlineVariant,

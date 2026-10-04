@@ -50,6 +50,7 @@ import { LoginDiagnosticsScreen } from './screens/LoginDiagnosticsScreen';
 import { AppLockScreen } from './screens/AppLockScreen';
 import { AccountSwitcherSheet } from './screens/AccountSwitcherSheet';
 import { SecurityOverlay } from './screens/security/SecurityOverlay';
+import { repoOwnerLogin, repoOwnerAvatar } from './utils/repo';
 
 function GitofyApp() {
   const { settings, triggerHaptic, colors } = useTheme();
@@ -80,10 +81,10 @@ function GitofyApp() {
 
   // First-run onboarding: shown until the user actually finishes or skips it.
   const [onboardingDone, setOnboardingDone] = useState<boolean>(() => {
-    try { return window.localStorage.getItem('gitofy.onboarded') === '1'; } catch { return false; }
+    try { return window.localStorage.getItem('gitofy.onboarded.v2') === '1'; } catch { return false; }
   });
   const completeOnboarding = useCallback(() => {
-    try { window.localStorage.setItem('gitofy.onboarded', '1'); } catch { /* ignore */ }
+    try { window.localStorage.setItem('gitofy.onboarded.v2', '1'); } catch { /* ignore */ }
     setOnboardingDone(true);
   }, []);
 
@@ -327,7 +328,7 @@ function GitofyApp() {
     setRepoActionCompleted(false);
     setRepoActionError(null);
     try {
-      await deleteGitHubRepo(repo.owner.login, repo.name, settings.personalAccessToken);
+      await deleteGitHubRepo(repoOwnerLogin(repo), repo.name, settings.personalAccessToken);
       setRepos((prev) => prev.filter((r) => r.id !== repo.id));
       setSelectedRepo(null);
       setSelectedRepoIds([]);
@@ -352,7 +353,7 @@ function GitofyApp() {
     setCurrentScreen('repo_action');
     setIsNavVisible(false);
     try {
-      await clearGitHubRepoContents(repo.owner.login, repo.name, repo.default_branch || 'main', settings.personalAccessToken);
+      await clearGitHubRepoContents(repoOwnerLogin(repo), repo.name, repo.default_branch || 'main', settings.personalAccessToken);
       setRepos((prev) => prev.map((r) => r.id === repo.id ? { ...r, last_commit: undefined, action_status: null, updated_at: new Date().toISOString() } : r));
       setRepoActionCompleted(true);
       setInboxItems((prev) => [{
@@ -389,7 +390,7 @@ function GitofyApp() {
 
     if (settings.personalAccessToken) {
       const results = await Promise.allSettled(
-        reposToDelete.map((r) => deleteGitHubRepo(r.owner.login, r.name, settings.personalAccessToken))
+        reposToDelete.map((r) => deleteGitHubRepo(repoOwnerLogin(r), r.name, settings.personalAccessToken))
       );
       const failed = results.filter((r) => r.status === 'rejected');
       if (failed.length > 0) {
