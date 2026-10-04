@@ -77,12 +77,40 @@ dependencies {
     implementation("com.google.android.material:material:1.11.0")
 }
 
-// Package the Vite bundle that CI copies into android/app/src/main/assets/web.
+// Package the Vite bundle (repo-root dist/) into android/app/src/main/assets/web.
+//
+// IMPORTANT: a Sync task wipes everything in the destination that is not in the
+// source. If dist/ is missing (e.g. gradle run straight from Android Studio
+// without a prior `npm run build`), the old code silently emptied assets/web,
+// which produced an APK that showed
+//   "Web page not available ... ERR_INVALID_RESPONSE"
+// because the WebView had no /web/index.html to load. We now (1) only sync when
+// dist/ actually exists, keeping a pre-bundled assets/web intact, and (2) fail
+// the build loudly if no bundle is present at all.
+def webDistDir = rootProject.projectDir.parentFile.toPath().resolve("dist").toFile()
+def webAssetsDir = file("src/main/assets/web")
+
 tasks.register("copyWebAssets", Sync) {
-    from(rootProject.projectDir.parentFile.toPath().resolve("dist").toFile())
-    into(file("src/main/assets/web"))
+    onlyIf { webDistDir.exists() }
+    from(webDistDir)
+    into(webAssetsDir)
+}
+
+tasks.register("verifyWebAssets") {
+    dependsOn("copyWebAssets")
+    doLast {
+        if (!file("src/main/assets/web/index.html").exists()) {
+            throw new GradleException(
+                "Web bundle missing: android/app/src/main/assets/web/index.html not found. " +
+                "Run `npm install && npm run build` in the project root first (which writes " +
+                "dist/ and its integrity.json), or use the CI workflow that builds and copies " +
+                "the bundle. Refusing to build an APK with no web assets."
+            )
+        }
+    }
 }
 
 tasks.named("preBuild").configure {
     dependsOn("copyWebAssets")
+    dependsOn("verifyWebAssets")
 }

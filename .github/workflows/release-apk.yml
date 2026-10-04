@@ -4,6 +4,30 @@ name: Build Signed Release APK
 # Release. The signing identity is stable: the keystore is restored from the
 # ANDROID_KEYSTORE_BASE64 secret on every run, so every APK shares one signature.
 #
+# ---------------------------------------------------------------------------
+# FIXES in this version (why the release was stuck with an old APK and the new
+# one never appeared):
+#
+#   1. The version is now stamped into android/app/build.gradle from the tag
+#      (v1.2.3 -> versionName "1.2.3"). Before this, versionName was hard-coded
+#      "1.0.0", so every release APK was named GITOFY-v1.0.0-release.apk and the
+#      installed app kept reporting 1.0.0 — which made the in-app updater offer
+#      the "same" update forever.
+#
+#   2. Old *.apk assets are now deleted from the release BEFORE the new APK is
+#      uploaded, so the release always carries exactly the newest APK instead of
+#      keeping the previous one.
+#
+#   3. The release is created/updated for both a v* tag push AND a manual
+#      "Run workflow", so a manual run no longer silently produces only an
+#      artifact with no release.
+#
+# NOTE: this workflow still requires the four signing secrets (below). If they
+# are missing it exits immediately at the first step and NO release is produced —
+# which is the most common reason a new APK never shows up. Run the
+# "Bootstrap signing secrets" workflow once to create them.
+# ---------------------------------------------------------------------------
+#
 # Required repository secrets (see docs/signing.md):
 #   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
 #   ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
@@ -63,6 +87,18 @@ jobs:
 
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Compute version from tag
+        id: ver
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="1.0.${GITHUB_RUN_NUMBER}"
+          fi
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Building version ${VERSION} (release tag v${VERSION})"
 
       - name: Set up JDK
         uses: actions/setup-java@v4
@@ -131,6 +167,18 @@ jobs:
           mkdir -p android/app/src/main/assets/web
           cp -R dist/. android/app/src/main/assets/web/
 
+      # FIX 1: stamp the real version so the APK name and the installed app's
+      # reported version both match the release tag.
+      - name: Stamp version into build.gradle
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          sed -i -E "s/versionCode [0-9]+/versionCode ${RUN_NUMBER}/" android/app/build.gradle
+          sed -i -E "s/versionName \"[^\"]*\"/versionName \"${VERSION}\"/" android/app/build.gradle
+          echo "Stamped version:"
+          grep -nE "versionCode|versionName" android/app/build.gradle
+
       - name: Build signed Release APK
         working-directory: android
         env:
@@ -174,11 +222,10 @@ jobs:
         working-directory: android
         env:
           APK: ${{ steps.apk.outputs.apk }}
+          VERSION: ${{ steps.ver.outputs.version }}
         run: |
-          version=$(grep -oP 'versionName\s+"\K[^"]+' app/build.gradle | head -1)
-          if [ -z "$version" ]; then version="${GITHUB_REF_NAME#v}"; fi
           mkdir -p output_apk
-          cp "$APK" "output_apk/GITOFY-v${version}-release.apk"
+          cp "$APK" "output_apk/GITOFY-v${VERSION}-release.apk"
           ls -la output_apk
 
       - name: Upload APK artifact
@@ -188,12 +235,39 @@ jobs:
           path: android/output_apk/*.apk
           if-no-files-found: error
 
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+      # FIX 2 + 3: make sure the release exists, then delete every old *.apk
+      # asset so the freshly built APK replaces it instead of piling up.
+      - name: Replace old APK assets on the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: |
+          set -euo pipefail
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG does not exist yet — creating it."
+            gh release create "$TAG" \
+              --target "$GITHUB_SHA" \
+              --title "Release $TAG (Gitofy signed APK)" \
+              --notes "Automated release."
+          fi
+          gh release view "$TAG" --json assets --jq '.assets[].name' | while read -r name; do
+            case "$name" in
+              *.apk)
+                echo "Removing previous APK asset: $name"
+                gh release delete-asset "$TAG" "$name" --yes
+                ;;
+            esac
+          done
+          echo "Old APK assets cleared for $TAG."
+
+      - name: Publish / update GitHub Release with the new APK
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.ver.outputs.tag }}
+          name: Release ${{ steps.ver.outputs.tag }} (Gitofy signed APK)
           files: android/output_apk/*.apk
-          name: Release ${{ github.ref_name }} (Gitofy signed APK)
+          overwrite_files: true
+          make_latest: true
           generate_release_notes: true
           draft: false
           prerelease: false
