@@ -48,6 +48,7 @@ import { PermissionsScreen } from './screens/PermissionsScreen';
 import { LoginDiagnosticsScreen } from './screens/LoginDiagnosticsScreen';
 import { AppLockScreen } from './screens/AppLockScreen';
 import { AccountSwitcherSheet } from './screens/AccountSwitcherSheet';
+import { SecurityOverlay } from './screens/security/SecurityOverlay';
 
 function GitofyApp() {
   const { settings, triggerHaptic, colors } = useTheme();
@@ -970,6 +971,7 @@ export default function App() {
     <ThemeProvider>
       <AuthProvider>
         <GitofyApp />
+        <SecurityOverlay />
       </AuthProvider>
     </ThemeProvider>
   );

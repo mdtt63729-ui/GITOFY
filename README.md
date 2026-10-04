@@ -20,6 +20,18 @@ The Gitufy GitHub App (client id `Iv23liLESLFaJa3yzCdE`, app id `5182766`) is
 pre-configured in `src/auth/config.ts`. Override via `VITE_GITHUB_CLIENT_ID` /
 `window.GITUFY_CONFIG` if needed. Full setup: **`docs/oauth-setup.md`**.
 
+## Integrity & updates
+
+- **Anti-tamper**: the build emits `integrity.json`; CI writes its root into
+  `android/app/src/main/res/raw/integrity_root.txt`; at runtime the bundle is
+  re-hashed and compared against both. A modified/repackaged app shows a blocking
+  "This is an unofficial app" popup.
+- **Updates**: the app reads the latest GitHub release of its own repo and shows
+  an M3 popup with Update/Later; the APK downloads and installs inside the app
+  with an M3 progress bar.
+
+See `docs/security-integrity.md`.
+
 ## OAuth implementation (PRD v2.0)
 
 Primary flow is the **Device Flow** — no client secret ever ships in the app.

@@ -517,3 +517,117 @@ html[data-ui-mode='nxt'] body {
     animation: none !important;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   Security sheet (unofficial-app / update popup). Adapted from the supplied
+   M3 "Update available" reference: orbiting rings, breathing glow, rotating
+   refresh icon. Scoped with a `gsec-` prefix.
+   --------------------------------------------------------------------------- */
+@keyframes gsecOrbitSpin { to { transform: rotate(360deg); } }
+@keyframes gsecOrbitSpinReverse { to { transform: rotate(-360deg); } }
+@keyframes gsecGlowBreathe { 0%,100% { transform: scale(1); opacity: .55; } 50% { transform: scale(1.25); opacity: .9; } }
+@keyframes gsecIconBreathe { 0%,100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-4px) scale(1.02); } }
+@keyframes gsecIconRotate { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+@keyframes gsecDotBlink { 0%,100% { opacity: .5; } 50% { opacity: 1; } }
+
+.gsec-icon-wrap { position: relative; width: 168px; height: 168px; display: flex; align-items: center; justify-content: center; }
+.gsec-orbit {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0deg, rgba(208,188,255,.05) 40deg, rgba(208,188,255,.55) 90deg, rgba(208,188,255,.05) 140deg, transparent 180deg, transparent 360deg);
+  -webkit-mask: radial-gradient(circle, transparent 62%, #000 63%, #000 68%, transparent 69%);
+          mask: radial-gradient(circle, transparent 62%, #000 63%, #000 68%, transparent 69%);
+  animation: gsecOrbitSpin 4.5s linear infinite; will-change: transform;
+  filter: drop-shadow(0 0 12px rgba(208,188,255,.4));
+}
+.gsec-orbit.secondary {
+  inset: 12px;
+  background: conic-gradient(from 90deg, transparent 0deg, rgba(182,157,248,.35) 60deg, transparent 120deg, transparent 360deg);
+  -webkit-mask: radial-gradient(circle, transparent 68%, #000 69%, #000 72%, transparent 73%);
+          mask: radial-gradient(circle, transparent 68%, #000 69%, #000 72%, transparent 73%);
+  animation: gsecOrbitSpinReverse 7s linear infinite; opacity: .7;
+}
+.gsec-glow {
+  position: absolute; inset: 20%; border-radius: 50%;
+  background: radial-gradient(circle, rgba(208,188,255,.35) 0%, transparent 70%);
+  filter: blur(20px); animation: gsecGlowBreathe 3s ease-in-out infinite; will-change: transform, opacity;
+}
+.gsec-icon {
+  position: relative; width: 104px; height: 104px; border-radius: 30px;
+  display: flex; align-items: center; justify-content: center; z-index: 2;
+  animation: gsecIconBreathe 3s ease-in-out infinite;
+  box-shadow: 0 6px 24px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.08), 0 0 40px rgba(154,122,250,.25);
+}
+.gsec-icon svg { width: 52px; height: 52px; animation: gsecIconRotate 6s linear infinite; transform-origin: center; }
+.gsec-chip-dot { width: 6px; height: 6px; border-radius: 50%; background: #7EE787; box-shadow: 0 0 8px rgba(126,231,135,.7); animation: gsecDotBlink 1.6s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .gsec-orbit, .gsec-orbit.secondary, .gsec-glow, .gsec-icon, .gsec-icon svg, .gsec-chip-dot { animation: none !important; }
+}
+
+/* ---------------------------------------------------------------------------
+   Danger sheet (unofficial-app warning). Adapted from the supplied M3 danger
+   reference: expanding ripples, red danger rings, breathing glow, a shaking
+   warning-triangle badge. Scoped with a `gdanger-` prefix.
+   --------------------------------------------------------------------------- */
+@keyframes gdangerRipple { 0% { transform: scale(.55); opacity: .9; } 100% { transform: scale(1.35); opacity: 0; } }
+@keyframes gdangerSpin { to { transform: rotate(360deg); } }
+@keyframes gdangerSpinReverse { to { transform: rotate(-360deg); } }
+@keyframes gdangerGlow { 0%,100% { transform: scale(1); opacity: .6; } 50% { transform: scale(1.3); opacity: 1; } }
+@keyframes gdangerShake {
+  0%, 88%, 100% { transform: translateX(0) rotate(0deg); }
+  90% { transform: translateX(-2px) rotate(-1deg); }
+  92% { transform: translateX(2px) rotate(1deg); }
+  94% { transform: translateX(-2px) rotate(-0.8deg); }
+  96% { transform: translateX(1.5px) rotate(0.8deg); }
+  98% { transform: translateX(-1px) rotate(-0.4deg); }
+}
+@keyframes gdangerPulse { 0%,100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+@keyframes gdangerBlink { 0%,100% { opacity: .4; transform: scale(.85); } 50% { opacity: 1; transform: scale(1.15); } }
+
+.gdanger-icon-wrap { position: relative; width: 168px; height: 168px; display: flex; align-items: center; justify-content: center; }
+.gdanger-ripple { position: absolute; inset: 0; border-radius: 50%; border: 2px solid rgba(255,84,73,.6); animation: gdangerRipple 2.4s ease-out infinite; will-change: transform, opacity; }
+.gdanger-ripple:nth-child(2) { animation-delay: .8s; }
+.gdanger-ripple:nth-child(3) { animation-delay: 1.6s; }
+.gdanger-ring {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0deg, rgba(255,84,73,.1) 20deg, rgba(255,84,73,.85) 60deg, rgba(255,84,73,.1) 100deg, transparent 140deg, transparent 180deg, rgba(255,84,73,.6) 240deg, rgba(255,84,73,.1) 280deg, transparent 320deg, transparent 360deg);
+  -webkit-mask: radial-gradient(circle, transparent 62%, #000 63%, #000 68%, transparent 69%);
+          mask: radial-gradient(circle, transparent 62%, #000 63%, #000 68%, transparent 69%);
+  animation: gdangerSpin 3.5s linear infinite; will-change: transform;
+  filter: drop-shadow(0 0 14px rgba(255,84,73,.55));
+}
+.gdanger-ring.secondary {
+  inset: 14px;
+  background: conic-gradient(from 180deg, transparent 0deg, rgba(255,180,171,.4) 40deg, transparent 90deg, transparent 360deg);
+  -webkit-mask: radial-gradient(circle, transparent 70%, #000 71%, #000 74%, transparent 75%);
+          mask: radial-gradient(circle, transparent 70%, #000 71%, #000 74%, transparent 75%);
+  animation: gdangerSpinReverse 6s linear infinite; opacity: .75;
+}
+.gdanger-glow {
+  position: absolute; inset: 15%; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,84,73,.5) 0%, rgba(147,0,10,.2) 40%, transparent 72%);
+  filter: blur(20px); animation: gdangerGlow 1.8s ease-in-out infinite; will-change: transform, opacity;
+}
+.gdanger-icon {
+  position: relative; width: 104px; height: 104px; border-radius: 30px; z-index: 2;
+  display: flex; align-items: center; justify-content: center;
+  animation: gdangerShake 3.6s ease-in-out infinite;
+  box-shadow: 0 6px 24px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,180,171,.1), 0 0 40px rgba(255,84,73,.35);
+}
+.gdanger-icon svg { width: 54px; height: 54px; animation: gdangerPulse 1.8s ease-in-out infinite; }
+.gdanger-chip-dot { width: 7px; height: 7px; border-radius: 50%; background: #FF5449; box-shadow: 0 0 10px rgba(255,84,73,.9); animation: gdangerBlink 1.1s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .gdanger-ripple, .gdanger-ring, .gdanger-ring.secondary, .gdanger-glow, .gdanger-icon, .gdanger-icon svg, .gdanger-chip-dot { animation: none !important; }
+}
+
+/* Shared M3 sheet button + spinner used by the security sheets. */
+@keyframes gsheetSpin { to { transform: rotate(360deg); } }
+.gsheet-spinner {
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 2.5px solid rgba(28,27,31,.25); border-top-color: #1C1B1F;
+  animation: gsheetSpin .8s linear infinite;
+}
+.gsheet-btn { position: relative; overflow: hidden; transition: transform .25s cubic-bezier(.2,0,0,1), filter .25s cubic-bezier(.2,0,0,1), background .25s cubic-bezier(.2,0,0,1), border-color .25s cubic-bezier(.2,0,0,1); }
+.gsheet-btn:active { transform: translateY(0) scale(.98); filter: brightness(.98); }
+@media (prefers-reduced-motion: reduce) { .gsheet-spinner { animation: none !important; } }

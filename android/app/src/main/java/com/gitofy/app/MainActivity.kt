@@ -37,6 +37,11 @@ import java.net.URL
 import java.net.URLEncoder
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.io.File
+import java.io.FileOutputStream
+import java.security.MessageDigest
+import android.content.pm.ApplicationInfo
+import androidx.core.content.FileProvider
 
 class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
@@ -46,7 +51,7 @@ class MainActivity : AppCompatActivity() {
      * Bridge exposed to the web layer as `window.GitofyAndroid`.
      *
      * The OAuth-related methods exist because GitHub's device-flow endpoints
-     * (github.com/login/*) send no CORS headers, so a browser fetch is blocked
+     * (github.com/login/... ) send no CORS headers, so a browser fetch is blocked
      * by the WebView. Performing those two calls here — with only the public
      * client_id, never a secret — keeps the flow secret-free (PRD v2.0 §3.2).
      */
@@ -213,6 +218,153 @@ class MainActivity : AppCompatActivity() {
                 JSONObject().put("status", status).put("body", text).toString()
             } catch (e: Exception) {
                 JSONObject().put("status", 0).put("body", "{\"error\":\"network_error\"}").toString()
+            }
+        }
+
+        /** Expected bundle root hash (anchor) baked into the APK by CI. */
+        @JavascriptInterface
+        fun getExpectedIntegrityRoot(): String {
+            return try {
+                resources.openRawResource(R.raw.integrity_root)
+                    .bufferedReader().use { it.readText() }.trim()
+            } catch (e: Exception) {
+                ""
+            }
+        }
+
+        @JavascriptInterface
+        fun getAppVersion(): String {
+            return try {
+                packageManager.getPackageInfo(packageName, 0).versionName ?: ""
+            } catch (e: Exception) {
+                ""
+            }
+        }
+
+        @JavascriptInterface
+        fun getAppVersionCode(): Int {
+            return try {
+                val info = packageManager.getPackageInfo(packageName, 0)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    info.longVersionCode.toInt()
+                } else {
+                    @Suppress("DEPRECATION")
+                    info.versionCode
+                }
+            } catch (e: Exception) {
+                0
+            }
+        }
+
+        @JavascriptInterface
+        fun isDebugBuild(): Boolean {
+            return (applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        }
+
+        /** SHA-256 of the installed APK file, exposed for diagnostics. */
+        @JavascriptInterface
+        fun getApkDigest(): String {
+            return try {
+                val md = MessageDigest.getInstance("SHA-256")
+                File(applicationInfo.sourceDir).inputStream().use { input ->
+                    val buf = ByteArray(65536)
+                    while (true) {
+                        val n = input.read(buf)
+                        if (n < 0) break
+                        md.update(buf, 0, n)
+                    }
+                }
+                md.digest().joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            } catch (e: Exception) {
+                ""
+            }
+        }
+
+        private fun emitDownload(payload: String) {
+            runOnUiThread {
+                if (::webView.isInitialized) {
+                    webView.evaluateJavascript(
+                        "window.dispatchEvent(new CustomEvent('gitofy-download',{detail:$payload}))",
+                        null
+                    )
+                }
+            }
+        }
+
+        /** Streams an APK to cache and reports progress via gitofy-download events. */
+        @JavascriptInterface
+        fun startDownload(url: String, fileName: String, token: String) {
+            Thread {
+                var conn: HttpURLConnection? = null
+                try {
+                    conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                        connectTimeout = 20_000
+                        readTimeout = 60_000
+                        instanceFollowRedirects = true
+                        setRequestProperty("Accept", "application/octet-stream")
+                        setRequestProperty("User-Agent", "Gitufy-Android")
+                        if (token.isNotBlank()) setRequestProperty("Authorization", "Bearer $token")
+                    }
+                    val code = conn.responseCode
+                    if (code < 200 || code > 299) {
+                        emitDownload("{\"type\":\"error\",\"error\":\"HTTP $code\"}")
+                    } else {
+                        val total = conn.contentLengthLong
+                        val dir = File(cacheDir, "updates")
+                        if (!dir.exists()) dir.mkdirs()
+                        val safeName = fileName.replace(Regex("[^A-Za-z0-9._-]"), "_")
+                        val outFile = File(dir, safeName)
+                        var lastPct = -1
+                        conn.inputStream.use { input ->
+                            FileOutputStream(outFile).use { output ->
+                                val buf = ByteArray(65536)
+                                var read = 0L
+                                while (true) {
+                                    val n = input.read(buf)
+                                    if (n < 0) break
+                                    output.write(buf, 0, n)
+                                    read += n
+                                    if (total > 0) {
+                                        val pct = ((read * 100) / total).toInt()
+                                        if (pct != lastPct) {
+                                            lastPct = pct
+                                            emitDownload("{\"type\":\"progress\",\"percent\":$pct}")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        emitDownload("{\"type\":\"done\",\"path\":${JSONObject.quote(outFile.absolutePath)}}")
+                    }
+                } catch (e: Exception) {
+                    emitDownload("{\"type\":\"error\",\"error\":${JSONObject.quote(e.message ?: "download failed")}}")
+                } finally {
+                    conn?.disconnect()
+                }
+            }.start()
+        }
+
+        /** Launches the system installer for a previously downloaded APK. */
+        @JavascriptInterface
+        fun installApk(path: String): Boolean {
+            return try {
+                val file = File(path)
+                if (!file.exists()) {
+                    false
+                } else {
+                    val uri = FileProvider.getUriForFile(this@MainActivity, "com.gitofy.app.fileprovider", file)
+                    runOnUiThread {
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(uri, "application/vnd.android.package-archive")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                    }
+                    true
+                }
+            } catch (e: Exception) {
+                false
             }
         }
     }

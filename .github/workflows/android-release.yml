@@ -27,10 +27,15 @@ jobs:
         run: npm install --legacy-peer-deps --no-audit --no-fund
       - name: Lint and typecheck (B-09)
         run: npm run lint
+      - name: Kotlin comment guard (no nested block comments)
+        run: node scripts/check-kotlin-comments.mjs
       - name: Auth unit + integration tests (PRD v2.0 §15)
         run: npm test
       - name: Build Web App
         run: npm run build
+      - name: Write native integrity anchor
+        run: |
+          node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('dist/integrity.json','utf8')).root;fs.mkdirSync('android/app/src/main/res/raw',{recursive:true});fs.writeFileSync('android/app/src/main/res/raw/integrity_root.txt', r);console.log('anchor root:', r);"
       - name: Secret-scan gate (fail on leaked secret/token)
         run: |
           if grep -rInE "client_secret=[^&\"'[:space:]]+|github_pat_[A-Za-z0-9_]{20,}|ghp_[A-Za-z0-9]{36}" dist 2>/dev/null; then

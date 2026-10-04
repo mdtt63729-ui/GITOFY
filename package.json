@@ -6,11 +6,11 @@
   "scripts": {
     "dev": "tsx server.ts",
     "start": "node server.ts",
-    "build": "vite build",
+    "build": "vite build && node scripts/generate-integrity.mjs",
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "esbuild tests/auth.test.ts --bundle --platform=node --format=esm --outfile=.test-build/auth.test.mjs --log-level=warning && node --no-experimental-fetch .test-build/auth.test.mjs"
+    "test": "esbuild tests/auth.test.ts tests/security.test.ts --bundle --platform=node --format=esm --outdir=.test-build --log-level=warning && node --no-experimental-fetch .test-build/auth.test.js && node --no-experimental-fetch .test-build/security.test.js"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

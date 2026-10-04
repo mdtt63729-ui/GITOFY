@@ -116,6 +116,22 @@ const en: Dict = {
   'chooser.subtitle': 'to continue to Gitufy',
   'chooser.useAnother': 'Use another account',
   'chooser.hint': 'Accounts you have signed in with on this device.',
+
+  'sec.unofficial.badge': 'Security risk detected',
+  'sec.unofficial.topbar': 'Unofficial App',
+  'sec.unofficial.title': 'This is an unofficial app',
+  'sec.unofficial.subtitle': "You're using a modified version. For your safety, please download the official app.",
+  'sec.downloadOfficial': 'Download Official App',
+  'sec.update.title': 'A new version is ready',
+  'sec.update.subtitle': 'Enjoy the latest improvements, bug fixes, and performance upgrades.',
+  'sec.update.chip': '{version} available',
+  'sec.update.file': 'File: {name}',
+  'sec.download': 'Download',
+  'sec.update': 'Update',
+  'sec.later': 'Later',
+  'sec.downloading': 'Downloading',
+  'sec.installing': 'Installing',
+  'sec.error': 'Download failed. Please try again.',
 };
 
 const bn: Dict = {
@@ -225,6 +241,22 @@ const bn: Dict = {
   'chooser.subtitle': 'Gitufy-তে চালিয়ে যেতে',
   'chooser.useAnother': 'অন্য অ্যাকাউন্ট ব্যবহার করুন',
   'chooser.hint': 'এই ডিভাইসে আগে যেসব অ্যাকাউন্টে লগইন করেছেন।',
+
+  'sec.unofficial.badge': 'নিরাপত্তা ঝুঁকি শনাক্ত হয়েছে',
+  'sec.unofficial.topbar': 'আনঅফিসিয়াল অ্যাপ',
+  'sec.unofficial.title': 'এটি একটি আনঅফিসিয়াল অ্যাপ',
+  'sec.unofficial.subtitle': 'আপনি একটি পরিবর্তিত ভার্সন ব্যবহার করছেন। আপনার নিরাপত্তার জন্য, অনুগ্রহ করে অফিসিয়াল অ্যাপটি ডাউনলোড করুন।',
+  'sec.downloadOfficial': 'অফিসিয়াল অ্যাপ ডাউনলোড করুন',
+  'sec.update.title': 'একটি নতুন ভার্সন তৈরি',
+  'sec.update.subtitle': 'সর্বশেষ উন্নতি, বাগ ফিক্স ও পারফরম্যান্স আপগ্রেড উপভোগ করুন।',
+  'sec.update.chip': '{version} পাওয়া যাচ্ছে',
+  'sec.update.file': 'ফাইল: {name}',
+  'sec.download': 'ডাউনলোড',
+  'sec.update': 'আপডেট',
+  'sec.later': 'পরে',
+  'sec.downloading': 'ডাউনলোড হচ্ছে',
+  'sec.installing': 'ইনস্টল হচ্ছে',
+  'sec.error': 'ডাউনলোড ব্যর্থ হয়েছে। আবার চেষ্টা করুন।',
 };
 
 export const STRINGS: Record<Lang, Dict> = { en, bn };
