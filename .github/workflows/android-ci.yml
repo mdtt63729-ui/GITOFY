@@ -32,6 +32,13 @@ jobs:
         run: npm install --legacy-peer-deps --no-audit --no-fund
       - name: Lint and typecheck (B-09)
         run: npm run lint
+      - name: Build Web App
+        run: npm run build
+      - name: Copy Web App into Android assets
+        run: |
+          rm -rf android/app/src/main/assets/web
+          mkdir -p android/app/src/main/assets/web
+          cp -R dist/. android/app/src/main/assets/web/
       - name: Build Unsigned Release APK
         working-directory: android
         run: |

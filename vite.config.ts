@@ -5,6 +5,8 @@ import {defineConfig} from 'vite';
 
 export default defineConfig(() => {
   return {
+    // Use relative asset URLs because the Android shell loads the bundle from file:///android_asset.
+    base: './',
     plugins: [react(), tailwindcss()],
     resolve: {
       alias: {
