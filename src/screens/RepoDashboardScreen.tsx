@@ -117,11 +117,92 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
     }
   };
 
+
+  /**
+   * Downloads a release asset through the NATIVE bridge and, when it finishes,
+   * hands the APK straight to the system installer.
+   *
+   * The previous implementation faked the progress bar and then opened the
+   * browser — the user asked for a real in-app download that installs itself.
+   */
+  const handleNativeDownload = (asset: ReleaseAsset) => {
+    const bridge = (window as Window & {
+      GitofyAndroid?: {
+        startDownload?: (url: string, name: string, token: string) => void;
+        installApk?: (path: string) => boolean;
+      };
+    }).GitofyAndroid;
+    const assetId = asset.id;
+    const totalBytes = asset.size || 0;
+    const token = settings.personalAccessToken || '';
+    // With a token, use the API asset URL with Accept: octet-stream (the only
+    // form GitHub serves for private repositories).
+    const url = token
+      ? `https://api.github.com/repos/${repoOwnerLogin(repo)}/${repo.name}/releases/assets/${asset.id}`
+      : asset.browser_download_url;
+
+    setDownloads((prev) => ({
+      ...prev,
+      [assetId]: { status: 'downloading', progress: 0, receivedBytes: 0, totalBytes, speed: 'Starting…' },
+    }));
+
+    const handler = (e: Event) => {
+      const d = (e as CustomEvent).detail as { type: string; percent?: number; path?: string; error?: string };
+      if (!d) return;
+      if (d.type === 'progress') {
+        const pct = Math.max(0, Math.min(100, d.percent ?? 0));
+        setDownloads((prev) => ({
+          ...prev,
+          [assetId]: {
+            status: 'downloading',
+            progress: pct,
+            receivedBytes: totalBytes ? Math.round((totalBytes * pct) / 100) : 0,
+            totalBytes,
+            speed: 'Downloading…',
+          },
+        }));
+        return;
+      }
+      window.removeEventListener('gitofy-download', handler as EventListener);
+      if (d.type === 'done' && d.path) {
+        setDownloads((prev) => ({
+          ...prev,
+          [assetId]: { status: 'completed', progress: 100, receivedBytes: totalBytes, totalBytes, speed: 'Done' },
+        }));
+        triggerHaptic('success');
+        // Open the native package installer automatically.
+        try { bridge?.installApk?.(d.path); } catch { /* the user can retry */ }
+      } else {
+        setDownloads((prev) => ({
+          ...prev,
+          [assetId]: {
+            status: 'error', progress: 0, receivedBytes: 0, totalBytes,
+            speed: 'Failed', errorMessage: d.error || 'Download failed.',
+          },
+        }));
+        triggerHaptic('error');
+      }
+    };
+
+    window.addEventListener('gitofy-download', handler as EventListener);
+    try {
+      bridge?.startDownload?.(url, asset.name, token);
+    } catch {
+      window.removeEventListener('gitofy-download', handler as EventListener);
+    }
+  };
+
   /**
    * Starts or resumes a real chunked download with pause support
    */
   const handleStartOrResumeDownload = async (asset: ReleaseAsset) => {
     triggerHaptic('tick');
+    // Real in-app download whenever the native bridge is available: it streams
+    // the bytes itself (no CORS), shows a notification, and opens the installer.
+    if ((window as Window & { GitofyAndroid?: { startDownload?: unknown } }).GitofyAndroid?.startDownload) {
+      handleNativeDownload(asset);
+      return;
+    }
     const assetId = asset.id;
     const currentState = downloads[assetId];
     const isResuming = currentState?.status === 'paused';
@@ -367,7 +448,7 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col gitofy-scroll select-none animate-fade-in">
+    <div className="gitofy-screen-in flex-1 flex flex-col gitofy-scroll select-none">
       {/* Top Bar */}
       <div
         className="sticky top-0 z-30 px-4 py-3 border-b flex items-center justify-between"

@@ -80,7 +80,7 @@ export const RepoActionResultScreen: React.FC<Props> = ({
 
   if (error) {
     return (
-      <div className="flex-1 min-h-0 overflow-hidden flex flex-col items-center justify-between p-6" style={{ color: colors.onSurface }}>
+      <div className="gitofy-screen-in flex-1 min-h-0 overflow-hidden flex flex-col items-center justify-between p-6" style={{ color: colors.onSurface }}>
         <div className="w-full pt-12 text-center animate-scale-in">
           <div className="mx-auto w-36 h-36 rounded-[40px] flex items-center justify-center shadow-xl" style={{ backgroundColor: colors.errorContainer }}>
             <svg className="w-16 h-16" viewBox="0 0 24 24" fill="none" stroke={colors.onErrorContainer} strokeWidth="2" strokeLinecap="round">

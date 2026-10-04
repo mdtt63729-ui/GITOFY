@@ -1,10 +1,9 @@
 {
-  "generatedAt": 1791124075362,
-  "root": "587f42c1c48fcf23281c1154c53411ce9c262315af8f8db598603902c60e942c",
+  "generatedAt": 1791127357173,
+  "root": "56fd4d17b5df6ca7bd684d6403485154a3e685654800a172f2422f74925ebf69",
   "files": {
-    "assets/gitofy_icon-BDF-JtEA.png": "a61ce1efa863afc1640689f34cd5d4e0c6c6bba88f07fa5219a3dd263383c9c9",
-    "assets/index-Cm_f-JAw.css": "5ee512641655298ec688ef16e73bf620ca75fc38e1094bd09bb1bcebbab0041b",
-    "assets/index-QH1h78fb.js": "e03bdff22d1c7328fe57a9546fc1a2af49657080866eb7c93dda4ae9b7c30664",
-    "index.html": "a5b7fd378e453648ced302812e52972aa474bc59678018ba7a33c5cee8126af4"
+    "assets/index-D8jO1dU4.js": "23a8a23aa5bfb9ad7ca4ffed7cd859642046283c692f4ad30d99aab60fea2bf0",
+    "assets/index-rz1yVLY1.css": "d137c5adb5b02c6428393d3ae998b17c27b4f57379fbb4c5216394afa310ab47",
+    "index.html": "5fd71232e25630a4761e12f865a51599a64d3ae7769b06cec8c0ba3a77102a35"
   }
 }

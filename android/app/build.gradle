@@ -45,10 +45,14 @@ android {
 
     buildTypes {
         debug {
+            // A distinct id AND label, so installing the debug build sits next to
+            // the signed release as "Gitofy (Debug)" instead of overwriting it.
             applicationIdSuffix ".debug"
             debuggable true
+            resValue "string", "app_name", "Gitofy (Debug)"
         }
         release {
+            resValue "string", "app_name", "Gitofy"
             minifyEnabled false
             shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'

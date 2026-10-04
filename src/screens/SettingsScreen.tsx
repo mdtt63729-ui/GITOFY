@@ -80,7 +80,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const activeAccount = accounts.find((a) => a.id === activeAccountId) ?? null;
 
   return (
-    <div className="flex-1 flex flex-col gitofy-scroll select-none">
+    <div className="gitofy-screen-in flex-1 flex flex-col gitofy-scroll select-none">
       {/* Top Bar */}
       <div
         className="sticky top-0 z-30 px-4 py-3 border-b flex items-center justify-between"

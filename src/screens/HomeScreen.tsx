@@ -296,7 +296,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
             {/* Expandable Search Input */}
             {isSearchOpen && (
-              <div className="mt-2 animate-slide-down">
+              <div className="gitofy-search-in mt-2">
                 <div
                   className="flex items-center h-10 px-3 rounded-full border"
                   style={{
@@ -516,7 +516,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </M3Button>
           </div>
         ) : (
-          <div className="gitofy-reveal-stagger flex flex-col gap-2.5">
+          <div className="flex flex-col gap-2.5">
             {filteredRepos.map((repo) => {
               const isSelected = selectedRepoIds.includes(repo.id);
 

@@ -39,7 +39,6 @@ import { M3UploadFlowScreen } from './screens/M3UploadFlowScreen';
 import { M3GalleryScreen } from './screens/M3GalleryScreen';
 import { MotionLabScreen } from './screens/MotionLabScreen';
 import { RepoActionResultScreen, RepoActionKind } from './screens/RepoActionResultScreen';
-import { SplashScreen } from './screens/SplashScreen';
 import { OnboardingScreen } from './screens/OnboardingScreen';
 import { PageTransition } from './ui/transitions/PageTransition';
 import { AuthProvider, useAuth } from './auth/AuthContext';
@@ -64,20 +63,9 @@ function GitofyApp() {
     logoutActive,
     logoutAll,
   } = useAuth();
-  // Splash phases: visible -> exiting (fade) -> done. The app renders underneath
-  // so the splash can fade out smoothly into it with no white flash.
-  const [splashPhase, setSplashPhase] = useState<'visible' | 'exiting' | 'done'>('visible');
-
-  useEffect(() => {
-    const timer = window.setTimeout(() => setSplashPhase('exiting'), 360);
-    return () => window.clearTimeout(timer);
-  }, []);
-
-  useEffect(() => {
-    if (splashPhase !== 'exiting' || !ready) return;
-    const timer = window.setTimeout(() => setSplashPhase('done'), 420);
-    return () => window.clearTimeout(timer);
-  }, [splashPhase, ready]);
+  // The in-app splash PAGE was removed on request. The native Android window
+  // background already covers startup, so the app now opens straight into the
+  // real UI instead of showing a second splash screen with the app mark.
 
   // First-run onboarding: shown until the user actually finishes or skips it.
   const [onboardingDone, setOnboardingDone] = useState<boolean>(() => {
@@ -181,6 +169,7 @@ function GitofyApp() {
     }
 
     setIsLoadingRepos(true);
+    const startedAt = Date.now();
     try {
       const realRepos = await fetchUserRepos(settings.personalAccessToken);
       setRepos(realRepos);
@@ -188,6 +177,10 @@ function GitofyApp() {
       const msg = err instanceof Error ? err.message : 'Failed to load';
       console.warn('Could not load repos from GitHub:', msg);
     } finally {
+      // Hold the skeleton for at least 2 s, so refreshing never flashes the
+      // list in and out — the results then fade in smoothly.
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < 2000) await new Promise((r) => window.setTimeout(r, 2000 - elapsed));
       setIsLoadingRepos(false);
     }
   }, [settings.personalAccessToken]);
@@ -498,10 +491,12 @@ function GitofyApp() {
   const activeRepoForDelete =
     repos.find((r) => selectedRepoIds[0] === r.id) || selectedRepo || repos[0] || { name: 'repository' };
 
-  if (splashPhase !== 'done' || !ready) {
+  if (!ready) {
+    // Settings still loading: a blank canvas in the app background colour, not
+    // a splash page.
     return (
       <AndroidFrame>
-        <SplashScreen exiting={splashPhase === 'exiting'} />
+        <div style={{ height: '100dvh' }} />
       </AndroidFrame>
     );
   }
@@ -876,10 +871,9 @@ function GitofyApp() {
       {/* Scroll-Reactive FAB Menu (§৫.৯ & §৭) */}
       {currentScreen === 'home' && !isDeleteMode && (
         <FabMenu
-          // Keep the quick-action FAB always available on the home screen. It used
-          // to be hidden until you scrolled down, so at the top of the list it was
-          // off-screen and tapping it did nothing.
-          visible={true}
+          // Hide while scrolling down and bring it back on scroll up, in step
+          // with the bottom nav (the animation that was removed earlier).
+          visible={isNavVisible}
           onCreateRepo={() => setIsCreateSheetOpen(true)}
           onDeleteRepo={() => {
             triggerHaptic('heavy');

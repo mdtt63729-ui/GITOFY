@@ -109,11 +109,11 @@ export const FabMenu: React.FC<FabMenuProps> = ({
       {/* Backdrop Scrim with smooth opacity fade */}
       <div
         onClick={closeMenu}
-        className={`fixed inset-0 z-40 transition-opacity select-none ${
+        className={`gscrim-blur fixed inset-0 z-40 transition-opacity select-none ${
           isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
         }`}
         style={{
-          backgroundColor: 'rgba(0, 0, 0, 0.38)',
+          backgroundColor: 'rgba(0, 0, 0, 0.28)',
           transitionDuration: isOpen ? '280ms' : '180ms',
         }}
       />

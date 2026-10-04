@@ -270,7 +270,6 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
       style={{
         backgroundColor: colors.surface,
         color: colors.onSurface,
-        transition: 'background-color 200ms ease, color 200ms ease',
       }}
     >
       {/* --------------------------------------------------------- */}

@@ -62,7 +62,7 @@ export const InboxScreen: React.FC<InboxScreenProps> = ({
   return (
     <div
       onScroll={handleScroll}
-      className="relative flex-1 flex flex-col gitofy-scroll select-none"
+      className="gitofy-screen-in-bounce relative flex-1 flex flex-col gitofy-scroll select-none"
     >
       {/* Header */}
       <div

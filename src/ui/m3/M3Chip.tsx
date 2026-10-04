@@ -57,6 +57,8 @@ export const M3Chip: React.FC<M3ChipProps> = ({
         transform: isPressed && !settings.reduceMotion ? 'scale(0.94)' : 'scale(1)',
         transition: 'transform 0.18s cubic-bezier(.34,1.56,.64,1), background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease',
       }}
+      data-m3="chip"
+      data-selected={selected ? 'true' : 'false'}
       className={`h-8 ${dense ? 'px-2.5' : 'px-3'} rounded-lg inline-flex items-center ${dense ? 'gap-1' : 'gap-1.5'} text-xs font-medium cursor-pointer select-none whitespace-nowrap focus:outline-none ${className}`}
     >
       {selected && showCheckmark ? (

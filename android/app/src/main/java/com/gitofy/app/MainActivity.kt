@@ -41,6 +41,10 @@ import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
 import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
 
 class MainActivity : AppCompatActivity() {
@@ -358,6 +362,47 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        private fun ensureDownloadChannel() {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                if (mgr.getNotificationChannel(DOWNLOAD_CHANNEL_ID) == null) {
+                    val channel = NotificationChannel(
+                        DOWNLOAD_CHANNEL_ID,
+                        "Downloads",
+                        NotificationManager.IMPORTANCE_LOW
+                    ).apply {
+                        description = "APK download progress"
+                        setShowBadge(false)
+                    }
+                    mgr.createNotificationChannel(channel)
+                }
+            }
+        }
+
+        /**
+         * One ongoing notification while a file is downloading (title = the file
+         * name, with a real percentage), replaced by a "Downloaded" notification
+         * when it finishes.
+         */
+        private fun notifyDownload(title: String, text: String, percent: Int) {
+            try {
+                ensureDownloadChannel()
+                val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                val ongoing = percent in 0..99
+                val builder = NotificationCompat.Builder(this@MainActivity, DOWNLOAD_CHANNEL_ID)
+                    .setSmallIcon(android.R.drawable.stat_sys_download)
+                    .setContentTitle(title)
+                    .setContentText(text)
+                    .setOnlyAlertOnce(true)
+                    .setOngoing(ongoing)
+                    .setPriority(NotificationCompat.PRIORITY_LOW)
+                if (ongoing) builder.setProgress(100, percent, false) else builder.setProgress(0, 0, false)
+                mgr.notify(DOWNLOAD_NOTIFICATION_ID, builder.build())
+            } catch (_: Exception) {
+                // Notifications are best-effort; never break the download for them.
+            }
+        }
+
         private fun emitDownload(payload: String) {
             runOnUiThread {
                 if (::webView.isInitialized) {
@@ -393,6 +438,7 @@ class MainActivity : AppCompatActivity() {
                         val safeName = fileName.replace(Regex("[^A-Za-z0-9._-]"), "_")
                         val outFile = File(dir, safeName)
                         var lastPct = -1
+                        notifyDownload(fileName, "Starting…", 0)
                         conn.inputStream.use { input ->
                             FileOutputStream(outFile).use { output ->
                                 val buf = ByteArray(65536)
@@ -407,15 +453,22 @@ class MainActivity : AppCompatActivity() {
                                         if (pct != lastPct) {
                                             lastPct = pct
                                             emitDownload("{\"type\":\"progress\",\"percent\":$pct}")
+                                            notifyDownload(
+                                                fileName,
+                                                "$pct%  ·  ${read / (1024 * 1024)} MB / ${total / (1024 * 1024)} MB",
+                                                pct
+                                            )
                                         }
                                     }
                                 }
                             }
                         }
                         emitDownload("{\"type\":\"done\",\"path\":${JSONObject.quote(outFile.absolutePath)}}")
+                        notifyDownload("Downloaded", fileName, 100)
                     }
                 } catch (e: Exception) {
                     emitDownload("{\"type\":\"error\",\"error\":${JSONObject.quote(e.message ?: "download failed")}}")
+                    notifyDownload("Download failed", fileName, -1)
                 } finally {
                     conn?.disconnect()
                 }
@@ -430,7 +483,7 @@ class MainActivity : AppCompatActivity() {
                 if (!file.exists()) {
                     false
                 } else {
-                    val uri = FileProvider.getUriForFile(this@MainActivity, "com.gitofy.app.fileprovider", file)
+                    val uri = FileProvider.getUriForFile(this@MainActivity, packageName + ".fileprovider", file)
                     runOnUiThread {
                         val intent = Intent(Intent.ACTION_VIEW).apply {
                             setDataAndType(uri, "application/vnd.android.package-archive")
@@ -446,6 +499,9 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    private val DOWNLOAD_CHANNEL_ID = "gitofy_downloads"
+    private val DOWNLOAD_NOTIFICATION_ID = 4201
 
     private val filePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         fileChooserCallback?.onReceiveValue(uri?.let { arrayOf(it) })
@@ -521,6 +577,18 @@ class MainActivity : AppCompatActivity() {
 
         // Immersive edge-to-edge: the WebView occupies the entire display.
         applyImmersiveMode()
+
+        // Android 13+ needs runtime consent before we may post the download
+        // progress / "Downloaded" notifications.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            try {
+                requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 9001)
+            } catch (_: Exception) {
+                // Ignore — downloads still work, only the notification is skipped.
+            }
+        }
 
         // NOTE: WebViewAssetLoader strips the registered prefix and then opens the
         // *remainder* relative to the assets root. So a "/web/" handler maps

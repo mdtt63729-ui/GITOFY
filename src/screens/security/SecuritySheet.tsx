@@ -4,10 +4,14 @@ import { M3Dark, M3Danger } from './palette';
 import { SheetPrimaryButton, SheetSecondaryButton, SheetProgress } from './sheetUi';
 
 /**
- * Material 3 update sheet. Matches the supplied reference look exactly (fixed
- * dark M3 palette, lavender gradient primary pill, outlined secondary pill),
- * presented as a slide-up sheet over the lower half of the screen with a dimmed,
- * blurred, non-interactive backdrop.
+ * Material 3 update sheet. Matches the supplied reference look (fixed dark M3
+ * palette, lavender gradient primary pill, outlined secondary pill), presented
+ * as a slide-up sheet over the lower part of the screen with a dimmed, blurred,
+ * non-interactive backdrop.
+ *
+ * The sheet hugs its content (auto height) instead of a fixed 58vh, and every
+ * element is sized down a step, so nothing is clipped or has to scroll on a
+ * short phone screen.
  */
 export type SecurityMode = 'unofficial' | 'update';
 export type DownloadPhase = 'idle' | 'downloading' | 'installing' | 'done' | 'error';
@@ -57,28 +61,27 @@ export const SecuritySheet: React.FC<SecuritySheetProps> = ({
       />
 
       <div
-        className="relative w-full rounded-t-[28px] shadow-2xl flex flex-col overflow-hidden animate-slide-up"
+        className="gsec-sheet-in relative w-full rounded-t-[28px] shadow-2xl flex flex-col overflow-hidden"
         style={{
-          height: '58vh',
-          maxHeight: '58vh',
+          maxHeight: '88vh',
           color: M3Dark.onSurface,
           borderTop: `1px solid ${M3Dark.surfaceVariant}`,
           background:
             'radial-gradient(ellipse 80% 60% at 50% 0%, rgba(79,55,139,0.25) 0%, transparent 70%), #141218',
         }}
       >
-        <div className="w-full flex justify-center pt-3 pb-1">
+        <div className="w-full flex justify-center pt-2.5 pb-1">
           <div className="w-9 h-1 rounded-full" style={{ backgroundColor: M3Dark.surfaceVariant }} />
         </div>
 
-        <div className="text-center pt-1">
-          <span className="text-[11px] font-bold uppercase tracking-widest" style={{ color: M3Dark.onSurfaceVariant, opacity: 0.8 }}>
+        <div className="gsec-item gsec-item-1 text-center pt-0.5">
+          <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: M3Dark.onSurfaceVariant, opacity: 0.8 }}>
             Update available
           </span>
         </div>
 
-        <div className="flex-1 min-h-0 overflow-y-auto flex flex-col items-center justify-center text-center px-6 gap-1">
-          <div className="gsec-icon-wrap" style={{ width: 152, height: 152 }}>
+        <div className="flex flex-col items-center text-center px-6 pb-1">
+          <div className="gsec-icon-wrap gsec-icon-pop" style={{ width: 124, height: 124 }}>
             <div className="gsec-orbit" />
             <div className="gsec-orbit secondary" />
             <div className="gsec-glow" />
@@ -89,16 +92,16 @@ export const SecuritySheet: React.FC<SecuritySheetProps> = ({
             </div>
           </div>
 
-          <h2 className="text-xl font-black tracking-tight mt-2" style={{ color: M3Dark.onSurface }}>
+          <h2 className="gsec-item gsec-item-2 text-lg font-black tracking-tight mt-1" style={{ color: M3Dark.onSurface }}>
             {t('sec.update.title')}
           </h2>
-          <p className="text-xs leading-relaxed max-w-[320px]" style={{ color: M3Dark.onSurfaceVariant }}>
+          <p className="gsec-item gsec-item-3 text-[11px] leading-relaxed max-w-[300px] mt-1" style={{ color: M3Dark.onSurfaceVariant }}>
             {t('sec.update.subtitle')}
           </p>
 
           {version && (
             <div
-              className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-[11px] font-bold"
+              className="gsec-item gsec-item-4 mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold"
               style={{ backgroundColor: M3Dark.surfaceContainer, border: `1px solid ${M3Dark.surfaceVariant}`, color: M3Dark.onSurfaceVariant }}
             >
               <span className="gsec-chip-dot" />
@@ -107,7 +110,7 @@ export const SecuritySheet: React.FC<SecuritySheetProps> = ({
           )}
 
           {apkName && (
-            <p className="text-[10px] font-mono mt-1 break-all" style={{ color: M3Dark.onSurfaceVariant }}>
+            <p className="gsec-item gsec-item-4 text-[9px] font-mono mt-1 break-all" style={{ color: M3Dark.onSurfaceVariant }}>
               {t('sec.update.file', { name: apkName })}
             </p>
           )}
@@ -119,7 +122,7 @@ export const SecuritySheet: React.FC<SecuritySheetProps> = ({
           )}
         </div>
 
-        <div className="flex-shrink-0 flex flex-col gap-3 px-6 pt-2 pb-6">
+        <div className="gsec-item gsec-item-5 flex-shrink-0 flex flex-col gap-2.5 px-6 pt-3 pb-5">
           {busy && <SheetProgress value={pct} />}
 
           <SheetPrimaryButton loading={busy} disabled={busy || phase === 'done'} onClick={onDownload}>

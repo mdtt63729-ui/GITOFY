@@ -100,6 +100,9 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
     }
   };
 
+  // Selecting a workflow only chooses it and loads its runs into the EXECUTION
+  // RUNS list below. It must NOT jump straight into the run detail (steps/logs)
+  // — that only happens when a specific run card is tapped.
   const handleSelectWorkflow = async (wf: WorkflowItem) => {
     triggerHaptic('tick');
     setSelectedWorkflow(wf);
@@ -109,8 +112,6 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
       const workflowKey = wf.path ? wf.path.split('/').pop() || wf.id : wf.id;
       const freshRuns = await fetchWorkflowRuns(owner, repo, workflowKey, settings.personalAccessToken);
       setRuns(freshRuns);
-      setDetailRun(freshRuns[0] || null);
-      setDetailWorkflow(wf);
     } catch (err: unknown) {
       setStatusNotification({ text: err instanceof Error ? err.message : 'Could not load workflow runs.', isError: true });
     } finally {
@@ -237,7 +238,7 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col gitofy-scroll select-none animate-fade-in">
+    <div className="gitofy-screen-in flex-1 flex flex-col gitofy-scroll select-none">
       {/* Top App Bar */}
       <div
         className="sticky top-0 z-30 px-4 py-3 border-b flex items-center justify-between"

@@ -365,3 +365,62 @@ native splash — so the ONLY onboarding the user sees is the five-page
 4. **FAB menu.** Its hit-testing is now set inline (`pointerEvents: none` on the
    container, `auto` on the button and on the open item stack) so no stylesheet
    rule can leave the button unclickable, and the container moved to `z-[70]`.
+
+## Workflow tap targets + compact update sheet (this revision)
+
+1. **Tapping a workflow no longer jumps into the steps.** `handleSelectWorkflow`
+   was setting `detailRun`/`detailWorkflow`, which made the screen render
+   `WorkflowRunDetailScreen` immediately — so tapping a workflow card opened the
+   steps/logs of its latest run. It now only selects the workflow and loads its
+   runs into the EXECUTION RUNS list. The run detail (jobs + steps, and the
+   per-step log filter) opens only when a specific run card is tapped.
+
+2. **The update sheet no longer overflows.** It used a fixed `58vh` with a
+   152px icon and 18px-padded buttons, so the content was clipped / had to
+   scroll. It now hugs its content (`maxHeight: 88vh`, auto height), the icon
+   ring is 124px with an 86px glyph, and the sheet buttons use 14px padding at
+   0.95rem.
+
+3. **Nicer update-sheet entrance.** Added `gsec-sheet-in` (spring slide-up with
+   a small overshoot), `gsec-icon-pop` (the icon ring pops and un-rotates) and a
+   five-step `gsec-item-*` stagger for the label, title, subtitle, version chip
+   and the button block. Transform/opacity only, with reduced-motion handling.
+
+## Debug identity, in-app downloads, splash, animations (this revision)
+
+### Native
+1. **Debug APK no longer overwrites the signed release.** The debug build type
+   now also sets `resValue "string", "app_name", "Gitofy (Debug)"` (release keeps
+   "Gitofy"), the manifest label reads `@string/app_name`, and the FileProvider
+   authority is `${applicationId}.fileprovider` so the two apps never collide.
+2. **Real in-app APK downloads.** The release-asset download now goes through the
+   native bridge (`startDownload`), which streams the bytes itself (no CORS) and
+   then opens the system package installer automatically. The old code faked the
+   progress bar and finished by opening the browser.
+3. **Download notifications.** A `gitofy_downloads` channel posts an ongoing
+   notification titled with the file name and a live percentage while it
+   downloads, replaced by a "Downloaded" notification when it finishes (and
+   "Download failed" on error). `POST_NOTIFICATIONS` is requested on Android 13+.
+
+### Web
+4. **Splash page removed.** The app opens straight into the real UI; the native
+   window background covers startup.
+5. **FAB hide/show on scroll restored** (it follows the bottom nav again).
+6. **Premium page entrances** (`gitofy-screen-in`, plus a bouncy variant for
+   Home → Library) applied to the repo dashboard, GitHub Actions, Settings, the
+   repo-action (delete) page and the Library page.
+7. **NXT contrast fix**: filter chips and app-bar icon buttons get solid white
+   surfaces, visible purple borders and ink (selected chips keep the gradient).
+8. **iOS-style blur** under every popup, sheet and the FAB menu scrim.
+9. **Search field** expands with a spring instead of dropping in.
+10. **Refresh** holds the skeleton for at least 2 s, then the results fade in —
+    no flicker.
+11. **Repo cards** animate in as they scroll (the stagger wrapper that was
+    forcing them all visible on mount was removed).
+12. **Run detail restructured**: header shows the workflow name, then
+    repo · @user · #N · branch, with a 3-dot button on the right opening a FAB
+    menu — Refresh at the top, then Cancel run / Re-run all / Re-run failed.
+    Refresh shows a 2 s skeleton over the jobs and steps, then fades them in.
+    Tapping a workflow still only selects it; tapping a run opens the steps.
+13. Upload screen: removed the per-stage background transition that pulsed the
+    canvas on every stage change.

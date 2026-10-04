@@ -17,11 +17,11 @@ export const SheetPrimaryButton: React.FC<{
     onClick={onClick}
     style={{
       width: '100%',
-      padding: '18px 24px',
+      padding: '14px 22px',
       border: 'none',
       borderRadius: 100,
       fontFamily: 'inherit',
-      fontSize: '1rem',
+      fontSize: '0.95rem',
       fontWeight: 500,
       letterSpacing: '.5px',
       background: PRIMARY_BTN_BG,
@@ -51,11 +51,11 @@ export const SheetSecondaryButton: React.FC<{ children: React.ReactNode; onClick
     onClick={onClick}
     style={{
       width: '100%',
-      padding: '18px 24px',
+      padding: '14px 22px',
       border: `1px solid ${M3Dark.outline}`,
       borderRadius: 100,
       fontFamily: 'inherit',
-      fontSize: '1rem',
+      fontSize: '0.95rem',
       fontWeight: 500,
       letterSpacing: '.5px',
       background: 'transparent',

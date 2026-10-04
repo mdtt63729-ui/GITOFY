@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { SkeletonRows } from '../ui/m3/SkeletonRows';
 import { useTheme } from '../ui/ThemeContext';
 import { openExternal } from '../utils/external';
 import { M3IconButton } from '../ui/m3/M3IconButton';
@@ -46,7 +47,8 @@ export const WorkflowRunDetailScreen:React.FC<Props>=({repoName,workflow,initial
   const [rawLog,setRawLog]=useState(''); const [loading,setLoading]=useState(true); const [error,setError]=useState<string|null>(null); const [now,setNow]=useState(Date.now());
   const [connection,setConnection]=useState<'live'|'polling'|'offline'|'reconnecting'>('polling'); const [updatedAt,setUpdatedAt]=useState(Date.now()); const [rateBanner,setRateBanner]=useState<string|null>(null);
   const [paused,setPaused]=useState(false); const [follow,setFollow]=useState(settings.liveRunsAutoFollow); const [search,setSearch]=useState(''); const [caseSensitive,setCaseSensitive]=useState(false); const [regex,setRegex]=useState(false); const [wrap,setWrap]=useState(settings.liveRunsWrap); const [showLines,setShowLines]=useState(true); const [showTs,setShowTs]=useState(settings.liveRunsTimestamps); const [showDebug,setShowDebug]=useState(settings.liveRunsDebugLines); const [fontSize,setFontSize]=useState(settings.liveRunsLogFontSize); const [stepFilter,setStepFilter]=useState<number|null>(null);
-  const [actionBusy,setActionBusy]=useState(false); const [toast,setToast]=useState<string|null>(null); const logRef=useRef<HTMLDivElement|null>(null); const seenLogRef=useRef(''); const noChangeRef=useRef(0); const lastRunState=useRef<string>('');
+  const [actionBusy,setActionBusy]=useState(false); const [toast,setToast]=useState<string|null>(null);
+  const [actionMenuOpen,setActionMenuOpen]=useState(false); const [jobsSkeleton,setJobsSkeleton]=useState(false); const logRef=useRef<HTMLDivElement|null>(null); const seenLogRef=useRef(''); const noChangeRef=useRef(0); const lastRunState=useRef<string>('');
   const [owner,repo]=useMemo(()=>{const p=repoName.split('/');return [p[0],p[1]||repoName]},[repoName]);
 
   // Refs mirror the latest values so the polling callbacks can stay stable.
@@ -135,21 +137,33 @@ export const WorkflowRunDetailScreen:React.FC<Props>=({repoName,workflow,initial
   const shareText=async(text:string)=>{if(navigator.share)await navigator.share({title:'Gitofy GitHub Actions',text});else await navigator.clipboard?.writeText(text)};
   const performAction=async(kind:'cancel'|'rerun'|'failed')=>{if(!run)return;setActionBusy(true);try{if(kind==='cancel')await cancelWorkflowRunDetailed(owner,repo,run.id,token);else await rerunWorkflowRunDetailed(owner,repo,run.id,token,kind==='failed');setToast(kind==='cancel'?'Cancel requested.':kind==='failed'?'Re-run failed jobs requested.':'Re-run requested.');triggerHaptic('success');setTimeout(()=>void loadSnapshot(false),1000)}catch(e){setToast(e instanceof Error?e.message:'GitHub action failed');triggerHaptic('error')}finally{setActionBusy(false)}};
 
+  // Refresh from the 3-dot menu: hold the skeleton for two seconds, then let
+  // the jobs and steps fade back in.
+  const refreshAll = async () => {
+    setActionMenuOpen(false);
+    triggerHaptic('tick');
+    setJobsSkeleton(true);
+    const startedAt = Date.now();
+    await loadSnapshot(false);
+    const elapsed = Date.now() - startedAt;
+    if (elapsed < 2000) await new Promise((r) => window.setTimeout(r, 2000 - elapsed));
+    setJobsSkeleton(false);
+  };
+
   const runTone=toneOf({status:run?.status||'queued',conclusion:run?.conclusion||null}); const runColor=colorFor(runTone,colors);
   return <div className="flex-1 flex flex-col gitofy-scroll select-none" style={{backgroundColor:colors.surface}}>
     <div className="sticky top-0 z-30 px-3 py-2.5 border-b" style={{backgroundColor:`${colors.surface}f5`,borderColor:colors.outlineVariant}}>
-      <div className="flex items-center gap-2"><M3IconButton aria-label="Back" onClick={onBack}><svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></M3IconButton><div className="min-w-0 flex-1"><h2 className="text-base font-black truncate">{workflow.name}</h2><p className="text-[10px] font-mono opacity-65 truncate">{repoName} · #{run?.run_number??'—'} · {run?.head_branch||'—'} · {run?.head_sha?.slice(0,7)||'—'}</p></div><span className="px-2 py-1 rounded-full text-[10px] font-black" style={{color:runColor,backgroundColor:`${runColor}22`}}>{statusText(runTone)}</span></div>
+      <div className="flex items-start gap-2"><M3IconButton aria-label="Back" onClick={onBack}><svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></M3IconButton><div className="min-w-0 flex-1"><h2 className="text-base font-black truncate">{workflow.name}</h2><p className="text-[10px] font-mono opacity-65 truncate">{repoName} · @{settings.githubUsername||'user'} · #{run?.run_number??'—'} · {run?.head_branch||'main'}</p></div><div className="flex flex-col items-end gap-1.5"><M3IconButton aria-label="Run actions" onClick={()=>{triggerHaptic('tick');setActionMenuOpen(v=>!v)}}><svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg></M3IconButton><span className="px-2 py-1 rounded-full text-[10px] font-black" style={{color:runColor,backgroundColor:`${runColor}22`}}>{statusText(runTone)}</span></div></div>
       <div className="mt-2 flex items-center gap-2 overflow-x-auto"><span className="px-2.5 py-1 rounded-full text-[10px] font-bold whitespace-nowrap" style={{backgroundColor:connection==='live'?colors.diffAddedContainer:connection==='offline'?colors.errorContainer:colors.tertiaryContainer,color:connection==='live'?colors.diffAdded:connection==='offline'?colors.error:colors.tertiary}}>● {connection==='live'?'Live':connection==='reconnecting'?'Reconnecting':connection==='offline'?'Offline':'Polling'}{connection!=='live'?` · Updated ${Math.max(0,Math.floor((Date.now()-updatedAt)/1000))}s ago`:''}</span><span className="text-[10px] font-mono opacity-55 whitespace-nowrap">Elapsed {duration(run?.created_at,run?.status==='completed'?run.updated_at:null,now)}</span><button className="text-[10px] font-bold underline whitespace-nowrap" onClick={()=>openExternal(run?.html_url)}>GitHub ↗</button></div>
     </div>
     <div className="p-4 pb-28 flex flex-col gap-3">
       {rateBanner&&<div className="rounded-2xl border px-3 py-2 text-[11px] font-semibold" style={{backgroundColor:colors.tertiaryContainer,color:colors.onTertiaryContainer,borderColor:colors.outlineVariant}}>{rateBanner}</div>}
       {error&&<div className="rounded-2xl border px-3 py-2 text-xs font-semibold" style={{backgroundColor:colors.errorContainer,color:colors.onErrorContainer,borderColor:colors.error}}>{error}</div>}
-      <div className="rounded-3xl border p-3" style={{backgroundColor:colors.surfaceContainerLow,borderColor:colors.outlineVariant}}><div className="flex flex-wrap gap-2"><M3Button variant="outlined" shape="capsule" size="compact" loading={actionBusy} disabled={runTone!=='running'&&runTone!=='queued'} onClick={()=>void performAction('cancel')}>Cancel</M3Button><M3Button variant="outlined" shape="capsule" size="compact" loading={actionBusy} onClick={()=>void performAction('rerun')}>Re-run all</M3Button><M3Button variant="tonal" shape="capsule" size="compact" loading={actionBusy} onClick={()=>void performAction('failed')}>Re-run failed</M3Button></div></div>
       <div className="flex items-center justify-between px-1"><h3 className="text-xs font-black uppercase tracking-wider" style={{color:colors.onSurfaceVariant}}>Jobs & Steps · {jobs.length}</h3>{loading&&<span className="text-[10px] opacity-60">Loading…</span>}</div>
-      {jobs.map(job=>{const t=toneOf(job),c=colorFor(t,colors),open=selectedJobId===job.id;return <div key={job.id} className="rounded-3xl border overflow-hidden" style={{backgroundColor:colors.surfaceContainerLowest,borderColor:open?c:colors.outlineVariant}}>
+      {jobsSkeleton?<SkeletonRows count={3} height={74}/>:<div className="gitofy-reveal-stagger flex flex-col gap-3">{jobs.map(job=>{const t=toneOf(job),c=colorFor(t,colors),open=selectedJobId===job.id;return <div key={job.id} className="rounded-3xl border overflow-hidden" style={{backgroundColor:colors.surfaceContainerLowest,borderColor:open?c:colors.outlineVariant}}>
         <button type="button" className="w-full text-left p-3" onClick={()=>{setSelectedJobId(job.id);setSelectedStep(null);triggerHaptic('tick')}}><div className="flex gap-3 items-start"><span className={`workflow-status-dot ${t==='running'?'workflow-running':''}`} style={{backgroundColor:c,color:c}}>{t==='success'?'✓':t==='failure'?'×':t==='cancelled'?'–':t==='queued'?'○':t==='running'?'':'•'}</span><div className="min-w-0 flex-1"><div className="flex justify-between gap-2"><span className="text-sm font-black truncate">{job.name}</span><span className="text-[10px] font-black uppercase" style={{color:c}}>{statusText(t)}</span></div><div className="mt-1 flex justify-between text-[10px] font-mono opacity-60"><span>{job.steps.length} steps{job.runner_name?` · ${job.runner_name}`:''}</span><span>{duration(job.started_at,job.completed_at,now)}</span></div></div></div></button>
         {open&&<div className="px-3 pb-3 flex flex-col gap-1.5">{job.steps.map(step=>{const st=toneOf(step),sc=colorFor(st,colors),active=selectedStep===step.number;return <button key={step.number} type="button" className={`w-full text-left rounded-2xl border p-2.5 ${st==='failure'?'animate-shake':''}`} style={{backgroundColor:st==='success'?`${colors.diffAdded}10`:st==='failure'?`${colors.error}12`:st==='running'?`${colors.tertiary}12`:colors.surfaceContainerLow,borderColor:active?sc:`${sc}55`}} onClick={()=>{setSelectedStep(step.number);setStepFilter(step.number)}}><div className="flex items-center gap-2"><span className={`workflow-step-icon ${st==='running'?'workflow-running':''}`} style={{color:sc,borderColor:`${sc}55`}}>{st==='success'?'✓':st==='failure'?'×':st==='cancelled'?'–':st==='queued'?'○':st==='running'?'':'•'}</span><span className="text-xs font-bold flex-1">{step.number}. {step.name}</span><span className="text-[10px] font-black uppercase" style={{color:sc}}>{statusText(st)}</span></div><div className="mt-1 text-right text-[10px] font-mono opacity-60">{duration(step.started_at,step.completed_at,now)}</div></button>})}</div>}
-      </div>})}
+      </div>})}</div>}
 
       {selectedJob&&<div className="rounded-3xl border overflow-hidden" style={{backgroundColor:'#0b0b0d',borderColor:colors.outlineVariant}}>
         <div className="px-3 py-2.5 border-b" style={{borderColor:'#2c2c31'}}><div className="flex items-center gap-2"><div className="min-w-0 flex-1"><div className="text-xs font-black text-white">{selectedStepObj?`Step ${selectedStepObj.number} · ${selectedStepObj.name}`:`${selectedJob.name} · Logs`}</div><div className="text-[10px] text-white/50 font-mono">GitHub log · adaptive tail</div></div><button className="text-[10px] text-white/70 px-2 py-1 rounded-lg bg-white/10" onClick={()=>setPaused(x=>!x)}>{paused?'Resume':'Pause'}</button></div>
@@ -163,5 +177,17 @@ export const WorkflowRunDetailScreen:React.FC<Props>=({repoName,workflow,initial
       </div>}
       {toast&&<button onClick={()=>setToast(null)} className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 rounded-full px-4 py-2 text-xs font-bold shadow-lg" style={{backgroundColor:colors.inverseSurface,color:colors.inverseOnSurface}}>{toast}</button>}
     </div>
+
+    {actionMenuOpen && <>
+      <div className="gscrim-blur fixed inset-0 z-40" style={{backgroundColor:'rgba(0,0,0,.28)'}} onClick={()=>setActionMenuOpen(false)} />
+      <div className="fixed right-4 z-[70] flex flex-col items-end gap-2.5" style={{bottom:'calc(96px + env(safe-area-inset-bottom))'}}>
+        {([
+          {id:'refresh',label:'Refresh',bg:colors.primaryContainer,fg:colors.onPrimaryContainer,act:()=>void refreshAll()},
+          {id:'cancel',label:'Cancel run',bg:colors.surfaceContainerHigh,fg:colors.onSurface,act:()=>void performAction('cancel')},
+          {id:'rerun',label:'Re-run all',bg:colors.secondaryContainer,fg:colors.onSecondaryContainer,act:()=>void performAction('rerun')},
+          {id:'failed',label:'Re-run failed',bg:colors.tertiaryContainer,fg:colors.onTertiaryContainer,act:()=>void performAction('failed')},
+        ]).map((item,i)=>(<button key={item.id} type="button" disabled={actionBusy} onClick={()=>{setActionMenuOpen(false);item.act();}} className="gitofy-screen-in flex items-center justify-end h-14 pl-4 pr-5 rounded-full shadow-lg border select-none cursor-pointer active:scale-95" style={{backgroundColor:item.bg,color:item.fg,borderColor:colors.outlineVariant,minWidth:56,animationDelay:`${i*45}ms`}}><span className="text-sm font-semibold tracking-wide whitespace-nowrap">{item.label}</span></button>))}
+      </div>
+    </>}
   </div>;
 };
