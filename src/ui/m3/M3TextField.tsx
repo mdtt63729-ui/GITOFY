@@ -1,0 +1,3 @@
+import React from 'react';
+export interface M3TextFieldProps extends React.InputHTMLAttributes<HTMLInputElement> { label:string; error?:string; supportingText?:string; leadingIcon?:React.ReactNode; trailingIcon?:React.ReactNode; validating?:boolean; isValid?:boolean|null; }
+export const M3TextField:React.FC<M3TextFieldProps>=({label,error,supportingText,value,onChange,disabled,placeholder,className='',type,...rest})=><md-outlined-text-field label={label} value={value??''} placeholder={placeholder} disabled={disabled} type={type} error={!!error} supporting-text={error||supportingText||''} onInput={(e:any)=>onChange?.(e as any)} className={className} {...rest}/>;

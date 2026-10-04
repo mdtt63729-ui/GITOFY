@@ -1,0 +1,148 @@
+@import url("https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap");
+@import "tailwindcss";
+
+@layer utilities {
+  .scrollbar-none {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20%, 60% { transform: translateX(-4px); }
+  40%, 80% { transform: translateX(4px); }
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slideDown {
+  from {
+    transform: translateY(-8px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    transform: scale(0.92);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes bounceOnce {
+  0% { transform: scale(0.3); opacity: 0; }
+  50% { transform: scale(1.15); }
+  70% { transform: scale(0.95); }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes pageEnter {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-page-enter {
+  animation: pageEnter 0.22s cubic-bezier(0.05, 0.7, 0.1, 1) both;
+}
+
+.animate-shake {
+  animation: shake 0.35s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s cubic-bezier(0.05, 0.7, 0.1, 1) both;
+}
+
+.animate-slide-down {
+  animation: slideDown 0.2s cubic-bezier(0.05, 0.7, 0.1, 1) both;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.25s cubic-bezier(0.34, 1.4, 0.64, 1) both;
+}
+
+.animate-bounce-once {
+  animation: bounceOnce 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+
+:root {
+  font-family: 'Roboto', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --md-ref-typeface-brand: 'Roboto', sans-serif;
+  --md-ref-typeface-plain: 'Roboto', sans-serif;
+}
+
+body { margin: 0; font-family: 'Roboto', system-ui, sans-serif; }
+button, input, textarea, select { font: inherit; }
+
+.gitofy-m3-button { min-height: 40px; --md-filled-button-container-shape: 999px; }
+.gitofy-m3-button-large { min-height: 56px; }
+.gitofy-m3-button-compact { min-height: 32px; }
+.gitofy-m3-icon-button { --md-icon-button-icon-size: 24px; }
+md-outlined-text-field { width: 100%; }
+md-filter-chip { flex: 0 0 auto; }
+md-switch { flex: 0 0 auto; }
+md-linear-progress { width: 100%; }
+
+.gitofy-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  isolation: isolate;
+  animation: gitofySplashIn 240ms cubic-bezier(.2,0,0,1) both;
+}
+.gitofy-splash-content { position: relative; z-index: 2; display:flex; flex-direction:column; align-items:center; text-align:center; padding:32px; }
+.gitofy-splash-content h1 { margin: 22px 0 6px; font-weight: 700; letter-spacing:-.03em; }
+.gitofy-splash-content p { max-width: 300px; margin:0; }
+.gitofy-logo-mark { width:88px; height:88px; border-radius:28px; display:grid; place-items:center; animation: gitofyLogoIn 850ms cubic-bezier(.2,.8,.2,1) both; }
+.gitofy-logo-mark svg { width:48px; height:48px; animation: gitofyLogoPulse 1.8s ease-in-out .2s infinite; }
+.gitofy-splash-orb { position:absolute; width:260px; height:260px; border-radius:50%; filter:blur(50px); opacity:.5; z-index:0; animation:gitofyOrb 7s ease-in-out infinite alternate; }
+.gitofy-splash-orb-a { top:-100px; right:-80px; }
+.gitofy-splash-orb-b { bottom:-120px; left:-90px; animation-delay:-2s; }
+.gitofy-splash-version { position:absolute; bottom:28px; left:0; right:0; text-align:center; z-index:2; }
+@keyframes gitofySplashIn { from { opacity:0 } to { opacity:1 } }
+@keyframes gitofyLogoIn { 0% { opacity:0; transform:translateY(18px) scale(.82) rotate(-7deg) } 65% { transform:translateY(-3px) scale(1.04) rotate(1deg) } 100% { opacity:1; transform:none } }
+@keyframes gitofyLogoPulse { 0%,100% { transform:scale(1) } 50% { transform:scale(1.06) } }
+@keyframes gitofyOrb { from { transform:translate3d(0,0,0) scale(1) } to { transform:translate3d(24px,-18px,0) scale(1.12) } }
+@media (prefers-reduced-motion: reduce) {
+  .gitofy-splash, .gitofy-logo-mark, .gitofy-logo-mark svg, .gitofy-splash-orb { animation:none !important; }
+}

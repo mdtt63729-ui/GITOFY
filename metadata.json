@@ -1,0 +1,6 @@
+{
+  "name": "Gitofy",
+  "description": "Gitofy - Fast Android GitHub repository manager with Smart Diff, ZIP push, Material 3 UI, and GitHub Actions workflows.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
