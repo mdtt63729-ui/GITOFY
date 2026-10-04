@@ -1026,3 +1026,246 @@ export async function clearGitHubRepoContents(owner: string, repo: string, branc
   }
   return newCommit.sha;
 }
+
+export interface RepoTreeEntry {
+  path: string;
+  name: string;
+  type: 'blob' | 'tree';
+  sha: string;
+  size?: number;
+  url?: string;
+}
+
+export interface RepoCommit {
+  sha: string;
+  message: string;
+  date: string;
+  html_url: string;
+  author?: { login?: string; avatar_url?: string };
+  committer?: { login?: string; avatar_url?: string };
+}
+
+function githubHeaders(token: string, json = false): Record<string, string> {
+  const h: Record<string, string> = { Authorization: `Bearer ${token.trim()}`, Accept: 'application/vnd.github+json' };
+  if (json) h['Content-Type'] = 'application/json';
+  return h;
+}
+
+
+
+interface GitHubResponseMeta {
+  etag: string | null;
+  remaining: number | null;
+  limit: number | null;
+  reset: number | null;
+  retryAfter: number | null;
+  notModified: boolean;
+}
+
+const etagCache = new Map<string, { etag: string; data: unknown; fetchedAt: number }>();
+let rateLimitState: GitHubResponseMeta = { etag: null, remaining: null, limit: null, reset: null, retryAfter: null, notModified: false };
+
+export function getGitHubRateLimitState(): GitHubResponseMeta { return { ...rateLimitState }; }
+
+async function fetchGitHubJson<T>(url: string, token: string, options: RequestInit = {}): Promise<{ data: T; meta: GitHubResponseMeta }> {
+  const key = url;
+  const cached = etagCache.get(key);
+  const headers = { ...githubHeaders(token), ...(options.headers || {}) } as Record<string, string>;
+  if (cached?.etag) headers['If-None-Match'] = cached.etag;
+
+  const res = await fetch(url, { ...options, headers });
+  const meta: GitHubResponseMeta = {
+    etag: res.headers.get('ETag'),
+    remaining: Number.isFinite(Number(res.headers.get('X-RateLimit-Remaining'))) ? Number(res.headers.get('X-RateLimit-Remaining')) : null,
+    limit: Number.isFinite(Number(res.headers.get('X-RateLimit-Limit'))) ? Number(res.headers.get('X-RateLimit-Limit')) : null,
+    reset: Number.isFinite(Number(res.headers.get('X-RateLimit-Reset'))) ? Number(res.headers.get('X-RateLimit-Reset')) : null,
+    retryAfter: Number.isFinite(Number(res.headers.get('Retry-After'))) ? Number(res.headers.get('Retry-After')) : null,
+    notModified: res.status === 304,
+  };
+  rateLimitState = meta;
+  if (res.status === 304 && cached) return { data: cached.data as T, meta };
+  if (!res.ok) {
+    if (res.status === 403 && meta.retryAfter) throw new Error(`GitHub rate limit/secondary limit. Retry after ${meta.retryAfter}s.`);
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body?.message || `GitHub request failed (${res.status}).`);
+  }
+  const data = await res.json() as T;
+  if (meta.etag) etagCache.set(key, { etag: meta.etag, data, fetchedAt: Date.now() });
+  return { data, meta };
+}
+
+export async function fetchWorkflowRunWithMeta(owner: string, repo: string, runId: number, token: string): Promise<{ run: WorkflowRun; meta: GitHubResponseMeta }> {
+  const { data: r, meta } = await fetchGitHubJson<any>(`https://api.github.com/repos/${owner}/${repo}/actions/runs/${runId}`, token);
+  return { run: {
+    id: r.id, name: r.name || r.workflow_name || 'GitHub Actions', workflow_id: r.workflow_id,
+    head_branch: r.head_branch || '', head_sha: r.head_sha || '', event: r.event || '', status: r.status || 'queued',
+    conclusion: r.conclusion, html_url: r.html_url || '', created_at: r.created_at || '', updated_at: r.updated_at || '',
+    run_number: r.run_number || 0, actor: r.actor ? { login: r.actor.login, avatar_url: r.actor.avatar_url } : undefined,
+    head_commit: r.head_commit ? { id: r.head_commit.id || '', message: r.head_commit.message || '', timestamp: r.head_commit.timestamp || '' } : undefined,
+  } as WorkflowRun, meta };
+}
+
+export async function fetchWorkflowRunJobsWithMeta(owner: string, repo: string, runId: number, token: string): Promise<{ jobs: any[]; meta: GitHubResponseMeta }> {
+  const { data, meta } = await fetchGitHubJson<any>(`https://api.github.com/repos/${owner}/${repo}/actions/runs/${runId}/jobs?per_page=100`, token);
+  return { jobs: Array.isArray(data.jobs) ? data.jobs.map((j: any) => ({
+    id: j.id, name: j.name || 'Job', status: j.status || 'queued', conclusion: j.conclusion,
+    started_at: j.started_at || null, completed_at: j.completed_at || null, runner_name: j.runner_name || null,
+    steps: Array.isArray(j.steps) ? j.steps.map((step: any) => ({ number: step.number, name: step.name || 'Step', status: step.status || 'queued', conclusion: step.conclusion, started_at: step.started_at || null, completed_at: step.completed_at || null })) : [],
+  })) : [], meta };
+}
+
+export async function cancelWorkflowRunDetailed(owner: string, repo: string, runId: number, token: string): Promise<void> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/runs/${runId}/cancel`, { method: 'POST', headers: githubHeaders(token) });
+  if (!res.ok && res.status !== 202) throw new Error(`Could not cancel run (${res.status}).`);
+}
+
+export async function rerunWorkflowRunDetailed(owner: string, repo: string, runId: number, token: string, failedOnly = false): Promise<void> {
+  const endpoint = failedOnly ? 'rerun-failed-jobs' : 'rerun';
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/runs/${runId}/${endpoint}`, { method: 'POST', headers: githubHeaders(token) });
+  if (!res.ok && res.status !== 201 && res.status !== 202) throw new Error(`Could not re-run workflow (${res.status}).`);
+}
+
+export async function fetchJobLogsIncremental(owner: string, repo: string, jobId: number, token: string): Promise<string> {
+  return fetchJobLogs(owner, repo, jobId, token);
+}
+
+export async function fetchWorkflowRun(owner: string, repo: string, runId: number, token: string): Promise<WorkflowRun> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/runs/${runId}`, { headers: githubHeaders(token) });
+  if (!res.ok) throw new Error(`Could not load workflow run (${res.status}).`);
+  const r = await res.json();
+  return {
+    id: r.id, name: r.name || r.workflow_name || 'GitHub Actions', workflow_id: r.workflow_id,
+    head_branch: r.head_branch || '', head_sha: r.head_sha || '', event: r.event || '', status: r.status || 'queued',
+    conclusion: r.conclusion, html_url: r.html_url || '', created_at: r.created_at || '', updated_at: r.updated_at || '',
+    run_number: r.run_number || 0,
+    actor: r.actor ? { login: r.actor.login, avatar_url: r.actor.avatar_url } : undefined,
+    head_commit: r.head_commit ? { id: r.head_commit.id || '', message: r.head_commit.message || '', timestamp: r.head_commit.timestamp || '' } : undefined,
+  } as WorkflowRun;
+}
+
+export async function fetchWorkflowRunJobs(owner: string, repo: string, runId: number, token: string): Promise<any[]> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/runs/${runId}/jobs?per_page=100`, { headers: githubHeaders(token) });
+  if (!res.ok) throw new Error(`Could not load workflow jobs (${res.status}).`);
+  const data = await res.json();
+  return Array.isArray(data.jobs) ? data.jobs.map((j: any) => ({
+    id: j.id, name: j.name || 'Job', status: j.status || 'queued', conclusion: j.conclusion,
+    started_at: j.started_at || null, completed_at: j.completed_at || null,
+    steps: Array.isArray(j.steps) ? j.steps.map((step: any) => ({ number: step.number, name: step.name || 'Step', status: step.status || 'queued', conclusion: step.conclusion, started_at: step.started_at || null, completed_at: step.completed_at || null })) : [],
+  })) : [];
+}
+
+function readU16(bytes: Uint8Array, o: number) { return bytes[o] | (bytes[o+1] << 8); }
+function readU32(bytes: Uint8Array, o: number) { return (bytes[o] | (bytes[o+1] << 8) | (bytes[o+2] << 16) | (bytes[o+3] << 24)) >>> 0; }
+
+async function inflateRaw(data: Uint8Array): Promise<Uint8Array> {
+  if (typeof DecompressionStream === 'undefined') throw new Error('This Android WebView cannot decompress GitHub job logs.');
+  const stream = new Blob([data as unknown as BlobPart]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return new Uint8Array(await new Response(stream).arrayBuffer());
+}
+
+async function extractZipText(buffer: ArrayBuffer): Promise<string> {
+  const bytes = new Uint8Array(buffer);
+  const decoder = new TextDecoder();
+  let eocd = -1;
+  for (let i = bytes.length - 22; i >= Math.max(0, bytes.length - 65557); i--) {
+    if (readU32(bytes, i) === 0x06054b50) { eocd = i; break; }
+  }
+  if (eocd < 0) return decoder.decode(bytes);
+  const centralOffset = readU32(bytes, eocd + 16);
+  const count = readU16(bytes, eocd + 10);
+  let pos = centralOffset;
+  const files: string[] = [];
+  for (let i = 0; i < count; i++) {
+    if (readU32(bytes, pos) !== 0x02014b50) break;
+    const method = readU16(bytes, pos + 10);
+    const compressedSize = readU32(bytes, pos + 20);
+    const nameLen = readU16(bytes, pos + 28);
+    const extraLen = readU16(bytes, pos + 30);
+    const commentLen = readU16(bytes, pos + 32);
+    const localOffset = readU32(bytes, pos + 42);
+    const name = decoder.decode(bytes.subarray(pos + 46, pos + 46 + nameLen));
+    const localNameLen = readU16(bytes, localOffset + 26);
+    const localExtraLen = readU16(bytes, localOffset + 28);
+    const start = localOffset + 30 + localNameLen + localExtraLen;
+    const compressed = bytes.subarray(start, start + compressedSize);
+    let content: Uint8Array;
+    if (method === 0) content = compressed;
+    else if (method === 8) content = await inflateRaw(compressed);
+    else { pos += 46 + nameLen + extraLen + commentLen; continue; }
+    if (!name.endsWith('/')) files.push(`${name}\n${decoder.decode(content)}`);
+    pos += 46 + nameLen + extraLen + commentLen;
+  }
+  return files.join('\n\n');
+}
+
+export async function fetchJobLogs(owner: string, repo: string, jobId: number, token: string): Promise<string> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/jobs/${jobId}/logs`, { headers: githubHeaders(token) });
+  if (!res.ok) throw new Error(`Could not load job logs (${res.status}).`);
+  const type = res.headers.get('content-type') || '';
+  if (type.includes('text/plain') || type.includes('text/html')) return await res.text();
+  return extractZipText(await res.arrayBuffer());
+}
+
+export async function fetchRepoTree(owner: string, repo: string, branch: string, token: string): Promise<RepoTreeEntry[]> {
+  const ref = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(branch)}`, { headers: githubHeaders(token) });
+  if (!ref.ok) throw new Error(`Could not load branch ${branch}.`);
+  const refData = await ref.json();
+  const commitSha = refData.object?.sha;
+  if (!commitSha) throw new Error('Branch commit was not found.');
+  const commit = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/commits/${commitSha}`, { headers: githubHeaders(token) });
+  if (!commit.ok) throw new Error('Could not load repository tree.');
+  const commitData = await commit.json();
+  const treeSha = commitData.tree?.sha;
+  if (!treeSha) return [];
+  const tree = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${treeSha}?recursive=1`, { headers: githubHeaders(token) });
+  if (!tree.ok) throw new Error('Could not load project structure.');
+  const data = await tree.json();
+  return (Array.isArray(data.tree) ? data.tree : []).filter((x: any) => x.type === 'blob' || x.type === 'tree').map((x: any) => ({ path: x.path, name: x.path.split('/').pop() || x.path, type: x.type, sha: x.sha, size: x.size, url: x.url }));
+}
+
+function decodeBase64Utf8(value: string): string {
+  const binary = atob(value.replace(/\n/g, ''));
+  const bytes = Uint8Array.from(binary, c => c.charCodeAt(0));
+  try { return new TextDecoder().decode(bytes); } catch { return binary; }
+}
+
+function encodeBase64Utf8(value: string): string {
+  const bytes = new TextEncoder().encode(value);
+  let binary = ''; const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  return btoa(binary);
+}
+
+export async function fetchRepoFile(owner: string, repo: string, path: string, token: string, branch = 'main'): Promise<{ content: string; sha: string }> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(branch)}`, { headers: githubHeaders(token) });
+  if (!res.ok) throw new Error(`Could not load ${path}.`);
+  const data = await res.json();
+  if (Array.isArray(data)) throw new Error('That path is a directory.');
+  if (data.encoding === 'base64' && typeof data.content === 'string') return { content: decodeBase64Utf8(data.content), sha: data.sha };
+  if (data.sha) {
+    const blob = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/blobs/${data.sha}`, { headers: githubHeaders(token) });
+    if (!blob.ok) throw new Error(`Could not read ${path}.`);
+    const blobData = await blob.json();
+    return { content: blobData.encoding === 'base64' ? decodeBase64Utf8(blobData.content || '') : (blobData.content || ''), sha: data.sha };
+  }
+  throw new Error('GitHub did not return file content.');
+}
+
+export async function commitRepoFileChange(owner: string, repo: string, path: string, content: string, sha: string, message: string, branch: string, token: string): Promise<{ commitSha: string; contentSha: string }> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${path.split('/').map(encodeURIComponent).join('/')}`, { method: 'PUT', headers: githubHeaders(token, true), body: JSON.stringify({ message: message.trim() || 'Update file via Gitofy', content: encodeBase64Utf8(content), sha, branch }) });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.message || `GitHub returned ${res.status}.`); }
+  const data = await res.json();
+  return { commitSha: data.commit?.sha || '', contentSha: data.content?.sha || sha };
+}
+
+export async function fetchRepoCommits(owner: string, repo: string, branch: string, token: string): Promise<RepoCommit[]> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits?sha=${encodeURIComponent(branch)}&per_page=50`, { headers: githubHeaders(token) });
+  if (!res.ok) throw new Error('Could not load repository commits.');
+  const data = await res.json();
+  return (Array.isArray(data) ? data : []).map((c: any) => ({ sha: c.sha, message: c.commit?.message || 'Commit', date: c.commit?.author?.date || c.commit?.committer?.date || c.committer?.date || '', html_url: c.html_url, author: c.author ? { login: c.author.login, avatar_url: c.author.avatar_url } : undefined, committer: c.committer ? { login: c.committer.login, avatar_url: c.committer.avatar_url } : undefined }));
+}
+
+export async function addRepoCommitComment(owner: string, repo: string, commitSha: string, body: string, path: string, line: number, token: string): Promise<void> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits/${commitSha}/comments`, { method: 'POST', headers: githubHeaders(token, true), body: JSON.stringify({ body, path, line: Math.max(1, line), side: 'RIGHT' }) });
+  if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.message || `Could not post comment (${res.status}).`); }
+}

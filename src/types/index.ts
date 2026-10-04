@@ -174,6 +174,10 @@ export interface GitHubRelease {
 
 export type AppScreen =
   | 'onboarding'
+  | 'login'
+  | 'permissions'
+  | 'login_diagnostics'
+  | 'app_lock'
   | 'home'
   | 'inbox'
   | 'repo_dashboard'
@@ -182,8 +186,11 @@ export type AppScreen =
   | 'upload_flow'
   | 'result'
   | 'workflows'
+  | 'workflow_run_detail'
   | 'settings'
   | 'm3_gallery'
   | 'motion_lab'
   | 'delete_repo'
-  | 'repo_action';
+  | 'repo_action'
+  | 'repo_files'
+  | 'repo_commits';

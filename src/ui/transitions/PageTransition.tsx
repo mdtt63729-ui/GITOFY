@@ -29,12 +29,12 @@ export const PageTransition: React.FC<PageTransitionProps> = ({
       className={`relative w-full h-full flex-1 flex flex-col overflow-hidden transition-all ${className}`}
       style={{
         backgroundColor: colors.surface,
-        opacity: settings.reduceMotion ? 1 : mounted ? 1 : 0,
+        opacity: 1,
         transform: settings.reduceMotion
           ? 'none'
           : mounted
           ? 'translateY(0) scale(1)'
-          : 'translateY(8px) scale(0.988)',
+          : 'translateY(2px) scale(0.998)',
         transitionProperty: 'opacity, transform',
         transitionDuration: '240ms',
         transitionTimingFunction: 'cubic-bezier(0.2, 0.0, 0, 1.0)',

@@ -23,7 +23,10 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     try {
       const saved = localStorage.getItem('gitofy_settings');
       if (saved) {
-        return { ...defaultSettings, ...JSON.parse(saved) };
+        // Drop any legacy plaintext token that older builds persisted.
+        const parsed = JSON.parse(saved) as Partial<GitofySettings>;
+        delete parsed.personalAccessToken;
+        return { ...defaultSettings, ...parsed, personalAccessToken: '' };
       }
     } catch {
       // Fallback
@@ -43,7 +46,11 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setSettings((prev) => {
       const updated = { ...prev, ...partial };
       try {
-        localStorage.setItem('gitofy_settings', JSON.stringify(updated));
+        // The token is a secret: it is held in memory (mirrored from the
+        // encrypted SecureStore) and NEVER written to localStorage (§7.1).
+        const { personalAccessToken: _token, ...persistable } = updated;
+        void _token;
+        localStorage.setItem('gitofy_settings', JSON.stringify(persistable));
       } catch {
         // Fallback
       }

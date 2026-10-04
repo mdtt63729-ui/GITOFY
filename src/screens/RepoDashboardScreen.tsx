@@ -9,6 +9,8 @@ export interface RepoDashboardScreenProps {
   repo: Repository;
   onBack: () => void;
   onUpdateWithZip: () => void;
+  onOpenFiles: () => void;
+  onOpenCommits: () => void;
   onRunWorkflows: () => void;
   onDeleteRepo: () => void;
   onDeleteContents: () => void;
@@ -50,6 +52,8 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
   repo,
   onBack,
   onUpdateWithZip,
+  onOpenFiles,
+  onOpenCommits,
   onRunWorkflows,
   onDeleteRepo,
   onDeleteContents,
@@ -421,47 +425,13 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
 
       <div className="p-5 flex flex-col gap-4 pb-28">
         {/* Navigation Tabs: Overview vs Releases */}
-        <div
-          className="flex items-center p-1 rounded-2xl border"
-          style={{
-            backgroundColor: colors.surfaceContainerLowest,
-            borderColor: colors.outlineVariant,
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('tick');
-              setActiveTab('overview');
-            }}
-            className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-              activeTab === 'overview' ? 'shadow-sm' : 'opacity-70'
-            }`}
-            style={{
-              backgroundColor: activeTab === 'overview' ? colors.primary : 'transparent',
-              color: activeTab === 'overview' ? colors.onPrimary : colors.onSurface,
-            }}
-          >
-            Overview
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('tick');
-              setActiveTab('releases');
-            }}
-            className={`flex-1 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
-              activeTab === 'releases' ? 'shadow-sm' : 'opacity-70'
-            }`}
-            style={{
-              backgroundColor: activeTab === 'releases' ? colors.primary : 'transparent',
-              color: activeTab === 'releases' ? colors.onPrimary : colors.onSurface,
-            }}
-          >
-            Releases & APKs
-          </button>
+        <div className="repo-tab-switcher flex items-center p-1 rounded-2xl border relative overflow-hidden" style={{ backgroundColor: colors.surfaceContainerLowest, borderColor: colors.outlineVariant }}>
+          <span className={`repo-tab-indicator ${activeTab === 'releases' ? 'repo-tab-indicator-right' : ''}`} style={{ backgroundColor: colors.primary }} />
+          <button type="button" onClick={() => { triggerHaptic('tick'); setActiveTab('overview'); }} className={`repo-tab-button ${activeTab === 'overview' ? 'repo-tab-active' : ''}`} style={{ color: activeTab === 'overview' ? colors.onPrimary : colors.onSurface }}>Overview</button>
+          <button type="button" onClick={() => { triggerHaptic('tick'); setActiveTab('releases'); }} className={`repo-tab-button ${activeTab === 'releases' ? 'repo-tab-active' : ''}`} style={{ color: activeTab === 'releases' ? colors.onPrimary : colors.onSurface }}>Releases & APKs</button>
         </div>
 
+        <div key={activeTab} className="repo-tab-content-enter">
         {activeTab === 'overview' ? (
           <>
             {/* Repo Header Card */}
@@ -576,6 +546,18 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Files / Commits — full GitHub-style project browser */}
+              <div className="grid grid-cols-2 gap-2 pt-1">
+                <button type="button" onClick={() => { triggerHaptic('tick'); onOpenFiles(); }} className="flex items-center gap-3 p-3 rounded-2xl border text-left active:scale-[0.98] transition-transform" style={{ backgroundColor: colors.surfaceContainerLowest, borderColor: colors.outlineVariant }}>
+                  <span className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.primaryContainer, color: colors.onPrimaryContainer }}><svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 5a2 2 0 0 1 2-2h5l2 2h5a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"/><path d="M8 10h8M8 14h8"/></svg></span>
+                  <span><span className="block text-sm font-black">Files</span><span className="block text-[10px] opacity-60">Browse & edit</span></span>
+                </button>
+                <button type="button" onClick={() => { triggerHaptic('tick'); onOpenCommits(); }} className="flex items-center gap-3 p-3 rounded-2xl border text-left active:scale-[0.98] transition-transform" style={{ backgroundColor: colors.surfaceContainerLowest, borderColor: colors.outlineVariant }}>
+                  <span className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ backgroundColor: colors.secondaryContainer, color: colors.onSecondaryContainer }}><svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="5" r="3"/><circle cx="12" cy="19" r="3"/><path d="M12 8v8"/></svg></span>
+                  <span><span className="block text-sm font-black">Commits</span><span className="block text-[10px] opacity-60">History & changes</span></span>
+                </button>
               </div>
 
               {/* Action Buttons */}
@@ -1004,6 +986,7 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
             )}
           </div>
         )}
+        </div>
       </div>
     </div>
   );

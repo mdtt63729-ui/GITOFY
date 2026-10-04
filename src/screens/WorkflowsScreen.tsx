@@ -3,6 +3,7 @@ import { useTheme } from '../ui/ThemeContext';
 import { WorkflowItem, WorkflowRun } from '../types';
 import { M3Button } from '../ui/m3/M3Button';
 import { M3IconButton } from '../ui/m3/M3IconButton';
+import { WorkflowRunDetailScreen } from './WorkflowRunDetailScreen';
 import {
   fetchRepoWorkflows,
   fetchWorkflowRuns,
@@ -31,6 +32,8 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
   const [selectedBranch, setSelectedBranch] = useState(settings.defaultBranch || 'main');
   const [artifactsMap, setArtifactsMap] = useState<Record<number, any[]>>({});
   const [loadingArtifactsRunId, setLoadingArtifactsRunId] = useState<number | null>(null);
+  const [detailWorkflow, setDetailWorkflow] = useState<WorkflowItem | null>(null);
+  const [detailRun, setDetailRun] = useState<WorkflowRun | null>(null);
   const [statusNotification, setStatusNotification] = useState<{
     text: string;
     isError: boolean;
@@ -61,6 +64,23 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
     }
   };
 
+  // Adaptive Direct Mode: the visible run list refreshes every 30s without a loading animation.
+  useEffect(() => {
+    if (!selectedWorkflow) return;
+    const timer = window.setInterval(() => {
+      void (async () => {
+        try {
+          const workflowKey = selectedWorkflow.path ? selectedWorkflow.path.split('/').pop() || selectedWorkflow.id : selectedWorkflow.id;
+          const fresh = await fetchWorkflowRuns(owner, repo, workflowKey, settings.personalAccessToken);
+          setRuns(fresh);
+        } catch {
+          // Silent background refresh; visible state remains usable.
+        }
+      })();
+    }, 30000);
+    return () => window.clearInterval(timer);
+  }, [selectedWorkflow?.id, owner, repo, settings.personalAccessToken]);
+
   const loadRuns = async (wf: WorkflowItem) => {
     setIsLoadingRuns(true);
     try {
@@ -79,12 +99,35 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
     }
   };
 
-  const handleSelectWorkflow = (wf: WorkflowItem) => {
+  const handleSelectWorkflow = async (wf: WorkflowItem) => {
     triggerHaptic('tick');
     setSelectedWorkflow(wf);
     setStatusNotification(null);
-    loadRuns(wf);
+    setIsLoadingRuns(true);
+    try {
+      const workflowKey = wf.path ? wf.path.split('/').pop() || wf.id : wf.id;
+      const freshRuns = await fetchWorkflowRuns(owner, repo, workflowKey, settings.personalAccessToken);
+      setRuns(freshRuns);
+      setDetailRun(freshRuns[0] || null);
+      setDetailWorkflow(wf);
+    } catch (err: unknown) {
+      setStatusNotification({ text: err instanceof Error ? err.message : 'Could not load workflow runs.', isError: true });
+    } finally {
+      setIsLoadingRuns(false);
+    }
   };
+
+  if (detailWorkflow) {
+    return (
+      <WorkflowRunDetailScreen
+        repoName={repoName}
+        workflow={detailWorkflow}
+        initialRun={detailRun}
+        token={settings.personalAccessToken}
+        onBack={() => { setDetailWorkflow(null); setDetailRun(null); }}
+      />
+    );
+  }
 
   // Real GitHub Actions Dispatch Execution
   const handleDispatch = async (targetWf?: WorkflowItem) => {

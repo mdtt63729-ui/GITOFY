@@ -732,12 +732,28 @@ export interface GitofySettings {
   reduceMotion: boolean;
   haptics: boolean;
   confirmDestructive: boolean;
+
+  // Live GitHub Actions
+  liveRunsPolling: 'battery' | 'balanced' | 'max';
+  liveRunsLogFontSize: number;
+  liveRunsWrap: boolean;
+  liveRunsTimestamps: boolean;
+  liveRunsAutoFollow: boolean;
+  liveRunsDebugLines: boolean;
+  liveRunsCacheDays: number;
+  instantMode: boolean;
   
   // Auth
   personalAccessToken: string;
   githubUsername: string;
   avatarUrl: string;
   isDemoMode: boolean;
+
+  // Auth & security (PRD v2.0 §7.6, §12)
+  appLockMode: 'off' | 'always' | '1m' | '5m';
+  flagSecure: boolean;
+  enableWebFlow: boolean;
+  diagnosticsOptIn: boolean;
 }
 
 export const defaultSettings: GitofySettings = {
@@ -766,8 +782,22 @@ export const defaultSettings: GitofySettings = {
   haptics: true,
   confirmDestructive: true,
 
+  liveRunsPolling: 'balanced',
+  liveRunsLogFontSize: 11,
+  liveRunsWrap: false,
+  liveRunsTimestamps: false,
+  liveRunsAutoFollow: true,
+  liveRunsDebugLines: false,
+  liveRunsCacheDays: 7,
+  instantMode: false,
+
   personalAccessToken: '',
   githubUsername: '',
   avatarUrl: '',
   isDemoMode: false,
+
+  appLockMode: 'off',
+  flagSecure: false,
+  enableWebFlow: false,
+  diagnosticsOptIn: true,
 };

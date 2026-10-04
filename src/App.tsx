@@ -4,6 +4,7 @@ import { AndroidFrame } from './components/AndroidFrame';
 import { FloatingNav } from './ui/m3/FloatingNav';
 import { FabMenu } from './ui/m3/FabMenu';
 import { M3Dialog } from './ui/m3/M3Dialog';
+import { M3Button } from './ui/m3/M3Button';
 import {
   Repository,
   DiffSummary,
@@ -23,10 +24,10 @@ import { processZipFile, computeSmartDiff, ExtractedFile } from './git/diffEngin
 import { EngineResult } from './git/gitUploadEngine';
 
 // Screens
-import { OnboardingScreen } from './screens/OnboardingScreen';
 import { HomeScreen } from './screens/HomeScreen';
 import { InboxScreen } from './screens/InboxScreen';
 import { RepoDashboardScreen } from './screens/RepoDashboardScreen';
+import { RepoCodeScreen } from './screens/RepoCodeScreen';
 import { ZipAnalysisScreen } from './screens/ZipAnalysisScreen';
 import { UploadScreen } from './screens/UploadScreen';
 import { ResultScreen } from './screens/ResultScreen';
@@ -40,9 +41,26 @@ import { MotionLabScreen } from './screens/MotionLabScreen';
 import { RepoActionResultScreen, RepoActionKind } from './screens/RepoActionResultScreen';
 import { SplashScreen } from './screens/SplashScreen';
 import { PageTransition } from './ui/transitions/PageTransition';
+import { AuthProvider, useAuth } from './auth/AuthContext';
+import { AuthConfig, isGitHubApp } from './auth/config';
+import { LoginScreen } from './screens/login/LoginScreen';
+import { PermissionsScreen } from './screens/PermissionsScreen';
+import { LoginDiagnosticsScreen } from './screens/LoginDiagnosticsScreen';
+import { AppLockScreen } from './screens/AppLockScreen';
+import { AccountSwitcherSheet } from './screens/AccountSwitcherSheet';
 
 function GitofyApp() {
-  const { settings, updateSettings, triggerHaptic, colors } = useTheme();
+  const { settings, triggerHaptic, colors } = useTheme();
+  const {
+    session,
+    ready,
+    activeAccount,
+    accounts,
+    switchAccount,
+    removeAccount,
+    logoutActive,
+    logoutAll,
+  } = useAuth();
   const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
@@ -50,11 +68,50 @@ function GitofyApp() {
     return () => window.clearTimeout(timer);
   }, []);
 
-  // Navigation State - Defaults to onboarding if no token is saved yet
-  const [currentScreen, setCurrentScreen] = useState<AppScreen>(() => {
-    return settings.personalAccessToken ? 'home' : 'onboarding';
-  });
+  // Navigation State
+  const [currentScreen, setCurrentScreen] = useState<AppScreen>('home');
   const [currentTab, setCurrentTab] = useState<'home' | 'inbox'>('home');
+  const [showAccountsSheet, setShowAccountsSheet] = useState(false);
+  const [showRemoveAccessDialog, setShowRemoveAccessDialog] = useState(false);
+  const [logoutNotice, setLogoutNotice] = useState(false);
+  const [showAddAccount, setShowAddAccount] = useState(false);
+  const [appLocked, setAppLocked] = useState<boolean>(settings.appLockMode !== 'off');
+  const hiddenAtRef = useRef<number | null>(null);
+
+  // Auth gate: unauthenticated users always land on the login screen (§11).
+  useEffect(() => {
+    if (!ready) return;
+    if (!session.isAuthenticated && currentScreen !== 'login') setCurrentScreen('login');
+    if (session.isAuthenticated && currentScreen === 'login') setCurrentScreen('home');
+  }, [ready, session.isAuthenticated, currentScreen]);
+
+  const sessionExpired = session.status === 'expired';
+
+  // FLAG_SECURE + app lock (§7.6).
+  useEffect(() => {
+    const bridge = (window as Window & { GitofyAndroid?: { setSecureFlag?: (on: boolean) => void } }).GitofyAndroid;
+    bridge?.setSecureFlag?.(settings.flagSecure);
+  }, [settings.flagSecure]);
+
+  useEffect(() => {
+    if (settings.appLockMode === 'off') {
+      setAppLocked(false);
+      return;
+    }
+    const timeoutMs =
+      settings.appLockMode === 'always' ? 0 : settings.appLockMode === '1m' ? 60_000 : 300_000;
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        hiddenAtRef.current = Date.now();
+      } else if (document.visibilityState === 'visible') {
+        const since = hiddenAtRef.current ? Date.now() - hiddenAtRef.current : Infinity;
+        if (since >= timeoutMs) setAppLocked(true);
+        hiddenAtRef.current = null;
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [settings.appLockMode]);
 
   // Repositories & Data State
   const [repos, setRepos] = useState<Repository[]>([]);
@@ -421,10 +478,30 @@ function GitofyApp() {
   const activeRepoForDelete =
     repos.find((r) => selectedRepoIds[0] === r.id) || selectedRepo || repos[0] || { name: 'repository' };
 
-  if (showSplash) {
+  if (showSplash || !ready) {
     return (
       <AndroidFrame>
         <SplashScreen />
+      </AndroidFrame>
+    );
+  }
+
+  // Optional app lock gates the whole UI (§7.6).
+  if (session.isAuthenticated && settings.appLockMode !== 'off' && appLocked) {
+    return (
+      <AndroidFrame>
+        <AppLockScreen onUnlock={() => setAppLocked(false)} />
+      </AndroidFrame>
+    );
+  }
+
+  // Unauthenticated: the full login flow owns the screen (§5.4).
+  if (!session.isAuthenticated) {
+    return (
+      <AndroidFrame>
+        <PageTransition viewKey="login">
+          <LoginScreen onLoggedIn={() => setCurrentScreen('home')} />
+        </PageTransition>
       </AndroidFrame>
     );
   }
@@ -444,19 +521,6 @@ function GitofyApp() {
       <PageTransition
         viewKey={currentScreen + (currentScreen === 'home' ? currentTab : '')}
       >
-        {currentScreen === 'onboarding' && (
-          <OnboardingScreen
-            onComplete={(pat, username, avatarUrl) => {
-              updateSettings({
-                personalAccessToken: pat,
-                githubUsername: username,
-                avatarUrl,
-              });
-              setCurrentScreen('home');
-            }}
-          />
-        )}
-
         {currentScreen === 'home' && currentTab === 'home' && (
           <HomeScreen
             repos={repos}
@@ -473,6 +537,7 @@ function GitofyApp() {
               setShowDeleteConfirmDialog(true);
             }}
             onOpenSettings={() => setCurrentScreen('settings')}
+            onOpenAccounts={() => setShowAccountsSheet(true)}
             onScrollDelta={handleScrollDelta}
             isDeleteMode={isDeleteMode}
             setIsDeleteMode={setIsDeleteMode}
@@ -522,6 +587,8 @@ function GitofyApp() {
             repo={selectedRepo}
             onBack={() => setCurrentScreen('home')}
             onUpdateWithZip={() => handleTriggerZipPicker(selectedRepo)}
+            onOpenFiles={() => { setIsNavVisible(false); setCurrentScreen('repo_files'); }}
+            onOpenCommits={() => { setIsNavVisible(false); setCurrentScreen('repo_commits'); }}
             onRunWorkflows={() => setCurrentScreen('workflows')}
             onDeleteRepo={() => {
               setSelectedRepoIds([selectedRepo.id]);
@@ -539,6 +606,24 @@ function GitofyApp() {
           />
         )}
 
+        {currentScreen === 'repo_files' && selectedRepo && (
+          <RepoCodeScreen
+            repo={selectedRepo}
+            token={settings.personalAccessToken}
+            initialTab="files"
+            onBack={() => { setIsNavVisible(true); setCurrentScreen('repo_dashboard'); }}
+          />
+        )}
+
+        {currentScreen === 'repo_commits' && selectedRepo && (
+          <RepoCodeScreen
+            repo={selectedRepo}
+            token={settings.personalAccessToken}
+            initialTab="commits"
+            onBack={() => { setIsNavVisible(true); setCurrentScreen('repo_dashboard'); }}
+          />
+        )}
+
         {currentScreen === 'delete_repo' && repoActionRepo && (
           <div className="flex-1 flex flex-col overflow-y-auto p-6 animate-fade-in">
             <div className="flex items-center gap-3 pt-2">
@@ -551,7 +636,7 @@ function GitofyApp() {
               <div className="w-28 h-28 rounded-[34px] flex items-center justify-center" style={{ backgroundColor: colors.errorContainer, color: colors.error }}><svg className="w-14 h-14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg></div>
               <div><h2 className="text-2xl font-black">Delete {repoActionRepo.name}?</h2><p className="mt-2 text-sm" style={{ color: colors.onSurfaceVariant }}>This permanently deletes the GitHub repository.</p></div>
             </div>
-            <M3Button variant="destructive-filled" shape="capsule" size="large" className="w-full font-bold" onClick={handleDeleteSingleRepo}>Delete repository</M3Button>
+            <M3Button variant="destructive-filled" shape="capsule" size="large" className="w-full font-bold" onClick={() => handleDeleteSingleRepo()}>Delete repository</M3Button>
           </div>
         )}
 
@@ -708,16 +793,36 @@ function GitofyApp() {
             onTokenUpdated={loadRepositories}
             onOpenGallery={() => setCurrentScreen('m3_gallery')}
             onOpenMotionLab={() => setCurrentScreen('motion_lab')}
-            onLogout={() => {
-              updateSettings({ personalAccessToken: '', githubUsername: '', avatarUrl: '' });
+            onOpenPermissions={() => setCurrentScreen('permissions')}
+            onOpenDiagnostics={() => setCurrentScreen('login_diagnostics')}
+            accounts={accounts}
+            activeAccountId={session.activeAccountId}
+            onAddAccount={() => { setShowAccountsSheet(true); }}
+            onLogoutOne={async (id: number) => {
+              await removeAccount(id);
+              setRepos([]);
+              setInboxItems([]);
+              setSelectedRepo(null);
+            }}
+            onLogoutAll={async () => {
+              await logoutAll();
               setRepos([]);
               setInboxItems([]);
               setSelectedRepo(null);
               setCurrentTab('home');
-              setCurrentScreen('onboarding');
               setIsNavVisible(true);
+              setLogoutNotice(true);
+              setShowRemoveAccessDialog(true);
             }}
           />
+        )}
+
+        {currentScreen === 'permissions' && (
+          <PermissionsScreen onBack={() => setCurrentScreen('settings')} />
+        )}
+
+        {currentScreen === 'login_diagnostics' && (
+          <LoginDiagnosticsScreen onBack={() => setCurrentScreen('settings')} />
         )}
 
         {currentScreen === 'm3_gallery' && (
@@ -800,6 +905,62 @@ function GitofyApp() {
         onConfirm={handleConfirmDelete}
         onCancel={() => setShowDeleteConfirmDialog(false)}
       />
+
+      {/* Account switcher (§7.5) */}
+      <AccountSwitcherSheet
+        isOpen={showAccountsSheet}
+        onClose={() => setShowAccountsSheet(false)}
+        accounts={accounts}
+        activeAccountId={session.activeAccountId}
+        onSwitch={(id) => { void switchAccount(id); }}
+        onAdd={() => { setShowAccountsSheet(false); setShowAddAccount(true); }}
+        onManage={() => { setShowAccountsSheet(false); setCurrentScreen('settings'); }}
+        onRemove={(id) => { void removeAccount(id); }}
+      />
+
+      {/* Add-account overlay: a fresh device flow that does not drop the current session */}
+      {showAddAccount && (
+        <div className="absolute inset-0 z-[80] flex flex-col" style={{ backgroundColor: colors.surface }}>
+          <LoginScreen onLoggedIn={() => setShowAddAccount(false)} />
+        </div>
+      )}
+
+      {/* Session ended — exactly one message (§7.3) */}
+      <M3Dialog
+        isOpen={sessionExpired && !showAddAccount}
+        title="Session ended"
+        description="Your GitHub session is no longer valid. Please log in again."
+        confirmLabel="Log in"
+        cancelLabel="Later"
+        onConfirm={() => { void logoutActive(); setRepos([]); setInboxItems([]); }}
+        onCancel={() => undefined}
+      />
+
+      {/* Remove GitHub access shortcut (§7.4) */}
+      <M3Dialog
+        isOpen={showRemoveAccessDialog}
+        title="Remove access on GitHub"
+        description="Everything has been wiped from your device. You can also remove Gitufy's access from your GitHub account."
+        confirmLabel="Open GitHub"
+        cancelLabel="Skip"
+        onConfirm={() => {
+          const bridge = (window as Window & { GitofyAndroid?: { openCustomTab?: (url: string) => void } }).GitofyAndroid;
+          const url = isGitHubApp() ? AuthConfig.endpoints.manageInstallations : AuthConfig.endpoints.manageApps;
+          if (bridge?.openCustomTab) bridge.openCustomTab(url);
+          else window.open(url, '_blank', 'noopener');
+          setShowRemoveAccessDialog(false);
+        }}
+        onCancel={() => setShowRemoveAccessDialog(false)}
+      />
+
+      {logoutNotice && (
+        <div
+          className="fixed left-1/2 -translate-x-1/2 bottom-24 z-[95] px-4 py-2.5 rounded-full text-xs font-bold shadow-lg animate-fade-in"
+          style={{ backgroundColor: colors.inverseSurface, color: colors.surface }}
+        >
+          Logged out. Everything was wiped from your device.
+        </div>
+      )}
     </AndroidFrame>
   );
 }
@@ -807,7 +968,9 @@ function GitofyApp() {
 export default function App() {
   return (
     <ThemeProvider>
-      <GitofyApp />
+      <AuthProvider>
+        <GitofyApp />
+      </AuthProvider>
     </ThemeProvider>
   );
 }

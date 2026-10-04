@@ -32,8 +32,16 @@ jobs:
         run: npm install --legacy-peer-deps --no-audit --no-fund
       - name: Lint and typecheck (B-09)
         run: npm run lint
+      - name: Auth unit + integration tests (PRD v2.0 §15)
+        run: npm test
       - name: Build Web App
         run: npm run build
+      - name: Secret-scan gate (fail on leaked secret/token)
+        run: |
+          if grep -rInE "client_secret=[^&\"'[:space:]]+|github_pat_[A-Za-z0-9_]{20,}|ghp_[A-Za-z0-9]{36}" dist 2>/dev/null; then
+            echo "::error::Secret or token pattern found in build output"; exit 1
+          fi
+          echo "No secret patterns found in dist/."
       - name: Copy Web App into Android assets
         run: |
           rm -rf android/app/src/main/assets/web

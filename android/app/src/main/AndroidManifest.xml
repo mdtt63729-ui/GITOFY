@@ -17,6 +17,7 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
+            android:launchMode="singleTask"
             android:theme="@style/Theme.Gitofy.Splash">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -28,6 +29,14 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="application/zip" />
                 <data android:mimeType="application/octet-stream" />
+            </intent-filter>
+            <!-- OAuth Web+PKCE callback (RFC 8252 reverse-domain style) (§6).
+                 The app validates `state` + PKCE; unknown params are ignored. -->
+            <intent-filter android:autoVerify="false">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="gitofy" android:host="callback" />
             </intent-filter>
         </activity>
 

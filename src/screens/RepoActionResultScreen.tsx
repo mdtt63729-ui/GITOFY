@@ -201,7 +201,7 @@ export const RepoActionResultScreen: React.FC<Props> = ({
             animation: settings.reduceMotion ? 'gitofySuccessPop .55s cubic-bezier(.2,0,0,1) forwards' : 'gitofySuccessPop .8s cubic-bezier(.34,1.56,.64,1) forwards, gitofyRingPulse 2.2s .8s ease-out infinite',
           }}
         >
-          <svg className="w-[76px] h-[76px]" viewBox="0 0 24 24" fill="none" stroke={colors.onDiffAddedContainer} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" style={{ filter: `drop-shadow(0 0 12px ${colors.diffAdded}cc)` }}>
+          <svg className="w-[76px] h-[76px]" viewBox="0 0 24 24" fill="none" stroke={colors.onSurface} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" style={{ filter: `drop-shadow(0 0 12px ${colors.diffAdded}cc)` }}>
             <path d="M5 13L10 18L19 7" style={{ strokeDasharray: 60, strokeDashoffset: 60, animation: 'gitofyDrawCheck .6s .4s cubic-bezier(.2,0,0,1) forwards' }} />
           </svg>
           {isDelete === false && (

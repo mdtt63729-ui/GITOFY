@@ -468,3 +468,52 @@ html[data-ui-mode='nxt'] body {
   object-fit: cover;
   border-radius: inherit;
 }
+
+/* Bouncy Material-style segmented repository tab transition. */
+.repo-tab-switcher { min-height: 50px; }
+.repo-tab-button { position: relative; z-index: 2; flex: 1; padding: 10px 8px; border: 0; background: transparent; border-radius: 14px; font-size: 12px; font-weight: 800; cursor: pointer; transition: color 180ms ease, transform 260ms cubic-bezier(.34,1.56,.64,1); }
+.repo-tab-button:active { transform: scale(.96); }
+.repo-tab-indicator { position: absolute; z-index: 1; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px); border-radius: 14px; transform: translateX(0); transition: transform 560ms cubic-bezier(.34,1.56,.64,1), box-shadow 300ms ease; box-shadow: 0 3px 10px rgba(0,0,0,.08); }
+.repo-tab-indicator-right { transform: translateX(100%); }
+.repo-tab-content-enter { animation: repoTabContentIn 360ms cubic-bezier(.2,.9,.25,1.12) both; }
+@keyframes repoTabContentIn { from { opacity: .72; transform: translateY(8px) scale(.992); } 55% { opacity: 1; transform: translateY(-1px) scale(1.002); } to { opacity: 1; transform: translateY(0) scale(1); } }
+.workflow-status-dot { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 50%; display:flex; align-items:center; justify-content:center; border: 2px solid currentColor; font-weight:900; font-size:16px; }
+.workflow-running { position:relative; border-color: currentColor; animation: workflowPulse 1.35s ease-in-out infinite; }
+.workflow-running::after { content:''; position:absolute; inset:-5px; border-radius:50%; border:2px solid currentColor; opacity:.28; animation: workflowRing 1.35s ease-out infinite; }
+.workflow-step-icon { width:24px; height:24px; flex:0 0 24px; border:1.5px solid; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:900; }
+@keyframes workflowPulse { 0%,100% { transform:scale(1); opacity:1; } 50% { transform:scale(1.08); opacity:.72; } }
+@keyframes workflowRing { from { transform:scale(.72); opacity:.5; } to { transform:scale(1.35); opacity:0; } }
+
+/* ---------------------------------------------------------------------------
+   Gitufy OAuth login motion (PRD v2.0 §5.4). All login-flow keyframes live
+   here so screens stay declarative and reduced-motion users get cross-fades.
+   --------------------------------------------------------------------------- */
+@keyframes gitofyFadeIn { from { opacity: 0; } to { opacity: 1; } }
+.animate-fade-in { animation: gitofyFadeIn 260ms cubic-bezier(0.2, 0, 0, 1) both; }
+
+@keyframes gitofySuccessPop { 0% { transform: scale(0) rotate(-45deg); } 70% { transform: scale(1.12) rotate(6deg); } 100% { transform: scale(1) rotate(0); } }
+.animate-success-pop { animation: gitofySuccessPop 520ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+
+@keyframes gitofyDrawTick { from { stroke-dashoffset: 32; } to { stroke-dashoffset: 0; } }
+.animate-draw-tick { stroke-dasharray: 32; animation: gitofyDrawTick 380ms ease-out 180ms both; }
+
+@keyframes gitofyCodeCharIn { from { opacity: 0; transform: translateY(9px) scale(0.86); } to { opacity: 1; transform: none; } }
+.animate-code-char { animation: gitofyCodeCharIn 320ms cubic-bezier(0.2, 0, 0, 1) both; }
+
+@keyframes gitofyPulseDot { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.78); } }
+.animate-pulse-dot { animation: gitofyPulseDot 1.4s ease-in-out infinite; }
+
+@keyframes gitofyRiseIn { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+.animate-rise-in { animation: gitofyRiseIn 380ms cubic-bezier(0.2, 0, 0, 1) 260ms both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-success-pop,
+  .animate-draw-tick,
+  .animate-code-char,
+  .animate-pulse-dot,
+  .animate-rise-in,
+  .animate-shake {
+    animation: none !important;
+  }
+}
