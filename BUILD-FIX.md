@@ -424,3 +424,25 @@ native splash — so the ONLY onboarding the user sees is the five-page
     Tapping a workflow still only selects it; tapping a run opens the steps.
 13. Upload screen: removed the per-stage background transition that pulsed the
     canvas on every stage change.
+
+## Auto-run all workflows + single Continue (this revision)
+
+1. **Every workflow starts automatically after an upload.** New
+   `runAllRepoWorkflows(owner, repo, branch, token)` in `githubApi.ts` lists the
+   repository's workflows and dispatches each one. It is called the moment the
+   upload commits, so the user never has to trigger anything by hand. Workflows
+   that do not declare `on: workflow_dispatch` cannot be started through the API
+   by design — those are the ones that already fire from the push, so they are
+   reported as "run on push" rather than counted as failures.
+
+2. **The upload-success page has one button.** The "Run CI Workflows / Build APK"
+   button and the separate "Done" button are gone. There is now a single
+   **Continue** button that goes straight to the Workflows page, with a small
+   line above it showing how many workflows were started automatically.
+
+## Update sheet: smaller buttons, icon moved down (this revision)
+
+- The **Update** and **Later** pills are smaller: padding `14px 22px` → `11px 20px`
+  and label size `0.95rem` → `0.88rem`.
+- The animated icon ring (orbits + glow + refresh glyph) sits lower: `mt-5` was
+  added above it, so it is no longer crowded against the "Update available" label.

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTheme } from '../ui/ThemeContext';
 import { Repository, DiffSummary, UploadState } from '../types';
 import { processZipFile, computeSmartDiff, ExtractedFile } from '../git/diffEngine';
-import { fetchRemoteTreeMap } from '../git/githubApi';
+import { fetchRemoteTreeMap, runAllRepoWorkflows } from '../git/githubApi';
 import { gitUploadEngine, EngineResult } from '../git/gitUploadEngine';
 import { M3CircularProgress } from '../ui/m3/M3CircularProgress';
 import { M3LinearProgress } from '../ui/m3/M3LinearProgress';
@@ -76,6 +76,9 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
   // Success Stage State
   const [commitSha, setCommitSha] = useState('');
   const [engineResult, setEngineResult] = useState<EngineResult | null>(null);
+  // Result of automatically starting every workflow after the upload.
+  const [autoRun, setAutoRun] = useState<{ total: number; dispatched: number; skipped: string[] } | null>(null);
+  const [autoRunBusy, setAutoRunBusy] = useState(false);
   const [copiedSha, setCopiedSha] = useState(false);
 
   // Throttled speed & ETA updates
@@ -236,6 +239,22 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
           setStage('success');
           onSuccess(result.sha, result);
         }, 300);
+
+        // Start EVERY workflow in the repository automatically. The push itself
+        // fires the push-triggered ones; the manually dispatchable ones are
+        // dispatched here.
+        if (settings.personalAccessToken) {
+          setAutoRunBusy(true);
+          void runAllRepoWorkflows(
+            repoOwnerLogin(repo),
+            repo.name,
+            repo.default_branch || settings.defaultBranch || 'main',
+            settings.personalAccessToken
+          )
+            .then((r) => setAutoRun(r))
+            .catch(() => setAutoRun(null))
+            .finally(() => setAutoRunBusy(false));
+        }
       }
     } catch (err: unknown) {
       triggerHaptic('error');
@@ -704,8 +723,22 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
             )}
           </div>
 
-          {/* Action Buttons */}
+          {/* Action Buttons.
+              No "run workflow" button here any more: the workflows are already
+              starting automatically, so this page offers a single Continue that
+              goes straight to the Workflows page. */}
           <div className="w-full max-w-sm flex flex-col gap-2.5">
+            {autoRunBusy ? (
+              <p className="text-[11px] font-semibold text-center opacity-75">
+                Starting all workflows…
+              </p>
+            ) : autoRun && autoRun.total > 0 ? (
+              <p className="text-[11px] font-semibold text-center opacity-75">
+                {autoRun.dispatched} of {autoRun.total} workflows started automatically
+                {autoRun.skipped.length > 0 ? ' · the rest run on push' : ''}
+              </p>
+            ) : null}
+
             <M3Button
               variant="filled"
               shape="capsule"
@@ -718,17 +751,7 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
                 </svg>
               }
             >
-              Run CI Workflows / Build APK
-            </M3Button>
-
-            <M3Button
-              variant="tonal"
-              shape="capsule"
-              size="large"
-              className="w-full font-bold"
-              onClick={onCancel}
-            >
-              Done
+              Continue
             </M3Button>
           </div>
         </div>

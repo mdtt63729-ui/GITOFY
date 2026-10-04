@@ -4,6 +4,39 @@ import { repoOwnerLogin, repoOwnerAvatar } from '../utils/repo';
 /**
  * Fetches real GitHub Actions workflows for a repository
  */
+/**
+ * Starts every workflow in a repository.
+ *
+ * Workflows that declare `on: workflow_dispatch` are dispatched directly. The
+ * others cannot be started through the API by design — those are the ones that
+ * already fire from the push we just made, so they are reported as "on push"
+ * rather than treated as failures.
+ */
+export async function runAllRepoWorkflows(
+  owner: string,
+  repo: string,
+  branch: string,
+  token: string
+): Promise<{ total: number; dispatched: number; skipped: string[] }> {
+  const workflows = await fetchRepoWorkflows(owner, repo, token);
+  const skipped: string[] = [];
+  let dispatched = 0;
+
+  const results = await Promise.allSettled(
+    workflows.map((w) => triggerWorkflowDispatch(owner, repo, w.path || w.id, branch, token))
+  );
+
+  results.forEach((result, i) => {
+    if (result.status === 'fulfilled' && result.value.success) {
+      dispatched += 1;
+    } else {
+      skipped.push(workflows[i]?.name || 'workflow');
+    }
+  });
+
+  return { total: workflows.length, dispatched, skipped };
+}
+
 export async function fetchRepoWorkflows(
   owner: string,
   repo: string,

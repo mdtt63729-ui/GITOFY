@@ -81,7 +81,7 @@ export const SecuritySheet: React.FC<SecuritySheetProps> = ({
         </div>
 
         <div className="flex flex-col items-center text-center px-6 pb-1">
-          <div className="gsec-icon-wrap gsec-icon-pop" style={{ width: 124, height: 124 }}>
+          <div className="gsec-icon-wrap gsec-icon-pop mt-5" style={{ width: 124, height: 124 }}>
             <div className="gsec-orbit" />
             <div className="gsec-orbit secondary" />
             <div className="gsec-glow" />
