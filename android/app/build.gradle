@@ -3,6 +3,20 @@ plugins {
     id("org.jetbrains.kotlin.android")
 }
 
+// Release signing is read from a temporary signing.properties file that CI writes
+// from GitHub Secrets (see docs/signing.md). No keystore, alias or password is
+// ever stored in the repository — the file lives in the runner's temp directory
+// for the duration of the build only.
+def signingPropertiesFile = System.getenv("SIGNING_PROPERTIES_FILE")
+def signingProperties = new Properties()
+def hasReleaseSigning = false
+
+if (signingPropertiesFile != null && file(signingPropertiesFile).exists()) {
+    file(signingPropertiesFile).withInputStream { signingProperties.load(it) }
+    def storePath = signingProperties["storeFile"]
+    hasReleaseSigning = storePath != null && !storePath.trim().isEmpty() && file(storePath).exists()
+}
+
 android {
     namespace "com.gitofy.app"
     compileSdk 34
@@ -17,6 +31,18 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    // Values come from signing.properties only; nothing is hard-coded here.
+    signingConfigs {
+        if (hasReleaseSigning) {
+            release {
+                storeFile file(signingProperties["storeFile"])
+                storePassword signingProperties["storePassword"]
+                keyAlias signingProperties["keyAlias"]
+                keyPassword signingProperties["keyPassword"]
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix ".debug"
@@ -26,7 +52,9 @@ android {
             minifyEnabled false
             shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            // Gitofy release is intentionally UNSIGNED. Do not attach a debug/release keystore here.
+            if (hasReleaseSigning) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 
@@ -58,4 +86,3 @@ tasks.register("copyWebAssets", Sync) {
 tasks.named("preBuild").configure {
     dependsOn("copyWebAssets")
 }
-

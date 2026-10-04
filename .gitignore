@@ -8,3 +8,10 @@ coverage/
 !.env.example
 
 .test-build/
+
+# Signing material — never commit
+*.keystore
+*.jks
+keystore.properties
+signing.properties
+android/app/gitufy.keystore

@@ -31,6 +31,23 @@
   reference screens (dark M3 surfaces, lavender gradient primary pill, outlined
   secondary pill, red danger accents) so they look like the originals rather than
   following the app theme.
+- The signing identity is permanent: the bootstrap workflow refuses to overwrite
+  an existing keystore unless the `force` input is set, and the keystore backup
+  artifact is retained for 90 days (keystore validity 10000 days).
+- Release workflow renamed to `release-apk.yml` and signing now flows through a
+  temporary `signing.properties` file (`SIGNING_PROPERTIES_FILE`), matching the
+  supplied spec. `android/gradlew` has no wrapper JAR, so the CI uses the `gradle`
+  binary from `gradle/actions/setup-gradle`.
+- `bootstrap-signing.yml`: generates the release keystore in Actions and, when
+  the `GH_SECRETS_PAT` secret is present, creates the four signing secrets in the
+  repository automatically via `gh secret set` (falls back to manual instructions
+  otherwise). Uploads a keystore backup artifact.
+- GitHub-website-only release signing: `release.yml` validates the four signing
+  secrets, restores the keystore from `ANDROID_KEYSTORE_BASE64` to a temp path,
+  builds `assembleRelease`, verifies the APK is signed, and attaches
+  `GITOFY-v<version>-release.apk` to the Release. `generate-keystore.yml` creates
+  the keystore once inside Actions (no local installs). Gradle signing is fully
+  environment-driven. See `docs/signing.md`.
 
 ### Added
 - GitHub OAuth 2.0 login & session system (PRD v2.0): Device Flow (primary, no

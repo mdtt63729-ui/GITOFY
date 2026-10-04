@@ -1,0 +1,158 @@
+name: Bootstrap signing secrets
+
+# One-time setup for release signing.
+#
+# It generates an Android release keystore inside the Actions runner (no JDK or
+# keytool needed on your own device) and then:
+#   * if the GH_SECRETS_PAT secret is present, it CREATES the four signing
+#     secrets in this repository automatically via the GitHub CLI;
+#   * otherwise it still generates everything and you add the four secrets by
+#     hand from the artifact.
+#
+# The signing identity is PERMANENT: the four repository secrets persist until
+# you delete them, and every future release is signed with the same key. This
+# workflow refuses to overwrite an existing identity unless you explicitly set
+# the "force" input to true (which would break updates for installed apps).
+#
+# Why a token is needed: GitHub does not allow the built-in GITHUB_TOKEN to
+# write repository secrets, so a personal access token with the "Secrets:
+# Read and write" permission (or a classic token with the "repo" scope) must be
+# supplied once as the GH_SECRETS_PAT secret. It is never stored in the code.
+#
+# Nothing sensitive is printed to the log — passwords and the base64 keystore
+# are masked.
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Regenerate and OVERWRITE the existing signing keystore (breaks updates for already-installed apps)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Check for an existing (permanent) signing identity
+        env:
+          GH_TOKEN: ${{ secrets.GH_SECRETS_PAT }}
+          REPO: ${{ github.repository }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          if [ -z "${GH_TOKEN:-}" ]; then
+            echo "GH_SECRETS_PAT is not set, so the existing-identity check is skipped."
+            echo "A keystore will be generated and you can add the four secrets by hand."
+            exit 0
+          fi
+          if gh secret list --repo "$REPO" --json name --jq '.[].name' | grep -qx ANDROID_KEYSTORE_BASE64; then
+            if [ "$FORCE" = "true" ]; then
+              echo "⚠️  A signing identity already exists and 'force' is true — it WILL be replaced."
+              echo "    Apps installed with the previous key will no longer receive updates."
+            else
+              echo "✅ A signing keystore already exists in this repository."
+              echo "   The signing identity is permanent — nothing to do."
+              echo "   (Set the 'force' input to true only if you deliberately want to rotate it.)"
+              echo "SKIP_BOOTSTRAP=1" >> "$GITHUB_ENV"
+            fi
+          else
+            echo "No signing identity yet — one will be created now."
+          fi
+
+      - name: Generate release keystore
+        if: env.SKIP_BOOTSTRAP != '1'
+        run: |
+          set -euo pipefail
+          ALIAS="gitofy-release"
+          KS="$RUNNER_TEMP/release.keystore"
+          PW="$(openssl rand -base64 36 | tr -dc 'A-Za-z0-9' | cut -c1-28)"
+          echo "::add-mask::$PW"
+
+          keytool -genkeypair -v \
+            -keystore "$KS" \
+            -alias "$ALIAS" \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass "$PW" -keypass "$PW" \
+            -dname "CN=Gitufy, O=Gitufy, C=IN"
+
+          B64="$(base64 -w0 "$KS")"
+          echo "::add-mask::$B64"
+
+          {
+            echo "ALIAS=$ALIAS"
+            echo "KEYSTORE_PATH=$KS"
+            printf 'SIGNING_PW=%s\n' "$PW"
+            printf 'KEYSTORE_B64=%s\n' "$B64"
+          } >> "$GITHUB_ENV"
+
+          echo "Keystore generated in the runner (validity 10000 days)."
+
+      - name: Provision repository secrets (automatic, permanent)
+        if: env.SKIP_BOOTSTRAP != '1'
+        env:
+          GH_TOKEN: ${{ secrets.GH_SECRETS_PAT }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [ -n "${GH_TOKEN:-}" ]; then
+            gh secret set ANDROID_KEYSTORE_BASE64   --repo "$REPO" --body "$KEYSTORE_B64"
+            gh secret set ANDROID_KEYSTORE_PASSWORD --repo "$REPO" --body "$SIGNING_PW"
+            gh secret set ANDROID_KEY_ALIAS         --repo "$REPO" --body "$ALIAS"
+            gh secret set ANDROID_KEY_PASSWORD      --repo "$REPO" --body "$SIGNING_PW"
+            echo "✅ Four signing secrets created in $REPO. They are permanent and every"
+            echo "   future release will be signed with this same key."
+            echo "   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD"
+          else
+            echo "ℹ️  GH_SECRETS_PAT is not set, so automatic provisioning was skipped."
+            echo "    Download the 'gitofy-signing-backup' artifact below and add the four secrets by hand,"
+            echo "    or add a GH_SECRETS_PAT secret and re-run this workflow for full automation."
+          fi
+
+      - name: Write keystore backup + secrets file
+        if: env.SKIP_BOOTSTRAP != '1'
+        run: |
+          set -euo pipefail
+          {
+            echo "Gitufy release signing — permanent keystore backup"
+            echo "=================================================="
+            echo "Keep this file private and store it somewhere safe (it is your only copy"
+            echo "of the private key). The signing identity in GitHub Secrets is permanent,"
+            echo "but this file lets you sign manually or restore the identity if needed."
+            echo ""
+            echo "ANDROID_KEY_ALIAS=$ALIAS"
+            echo "ANDROID_KEYSTORE_PASSWORD=$SIGNING_PW"
+            echo "ANDROID_KEY_PASSWORD=$SIGNING_PW"
+            echo ""
+            echo "ANDROID_KEYSTORE_BASE64:"
+            echo "$KEYSTORE_B64"
+          } > "$RUNNER_TEMP/gitofy-signing-secrets.txt"
+          cp "$KEYSTORE_PATH" "$RUNNER_TEMP/gitufy-release.keystore"
+          echo "Backup written."
+
+      - name: Upload keystore backup
+        if: env.SKIP_BOOTSTRAP != '1'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitofy-signing-backup
+          path: |
+            ${{ runner.temp }}/gitofy-signing-secrets.txt
+            ${{ runner.temp }}/gitufy-release.keystore
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Summary
+        if: env.SKIP_BOOTSTRAP != '1'
+        run: |
+          echo "Next steps:"
+          echo "  1. Download the 'gitofy-signing-backup' artifact and store it safely."
+          echo "     Keep the keystore forever — every future release uses this same key."
+          echo "  2. Delete the artifact once saved."
+          echo "  3. Run the 'Release (signed APK)' workflow (or push a v* tag)."

@@ -1,0 +1,199 @@
+name: Build Signed Release APK
+
+# Builds a SIGNED release APK entirely on GitHub and attaches it to a GitHub
+# Release. The signing identity is stable: the keystore is restored from the
+# ANDROID_KEYSTORE_BASE64 secret on every run, so every APK shares one signature.
+#
+# Required repository secrets (see docs/signing.md):
+#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
+#   ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+#
+# Note: this project ships android/gradlew without a wrapper JAR, so the build
+# uses the `gradle` binary provided by gradle/actions/setup-gradle rather than
+# `./gradlew`.
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-release:
+    name: Build Signed Release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Validate signing secrets
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          missing=0
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::ANDROID_KEYSTORE_BASE64 is missing"
+            missing=1
+          fi
+          if [ -z "$KEYSTORE_PASSWORD" ]; then
+            echo "::error::ANDROID_KEYSTORE_PASSWORD is missing"
+            missing=1
+          fi
+          if [ -z "$KEY_ALIAS" ]; then
+            echo "::error::ANDROID_KEY_ALIAS is missing"
+            missing=1
+          fi
+          if [ -z "$KEY_PASSWORD" ]; then
+            echo "::error::ANDROID_KEY_PASSWORD is missing"
+            missing=1
+          fi
+          if [ "$missing" -ne 0 ]; then
+            echo ""
+            echo "❌ Android release signing secrets are incomplete."
+            echo "Add them at: Settings -> Secrets and variables -> Actions -> New repository secret"
+            echo "Or run the 'Bootstrap signing secrets' workflow to create them automatically."
+            exit 1
+          fi
+          echo "✅ All four signing secrets are present."
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.4"
+
+      - name: Restore release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/signing"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/signing/release.jks"
+          chmod 600 "$RUNNER_TEMP/signing/release.jks"
+          if [ ! -s "$RUNNER_TEMP/signing/release.jks" ]; then
+            echo "::error::Failed to restore release keystore"
+            exit 1
+          fi
+          echo "Keystore restored to a temporary path (never written into the repo)."
+
+      - name: Create signing properties
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEYSTORE_FILE: ${{ runner.temp }}/signing/release.jks
+        run: |
+          cat > "$RUNNER_TEMP/signing/signing.properties" <<EOF
+          storeFile=$KEYSTORE_FILE
+          storePassword=$KEYSTORE_PASSWORD
+          keyAlias=$KEY_ALIAS
+          keyPassword=$KEY_PASSWORD
+          EOF
+          chmod 600 "$RUNNER_TEMP/signing/signing.properties"
+
+      - name: Install dependencies
+        run: npm install --legacy-peer-deps --no-audit --no-fund
+      - name: Lint and typecheck
+        run: npm run lint
+      - name: Kotlin comment guard (no nested block comments)
+        run: node scripts/check-kotlin-comments.mjs
+      - name: Auth + security tests
+        run: npm test
+      - name: Build Web App
+        run: npm run build
+      - name: Write native integrity anchor
+        run: |
+          node -e "const fs=require('fs');const r=JSON.parse(fs.readFileSync('dist/integrity.json','utf8')).root;fs.mkdirSync('android/app/src/main/res/raw',{recursive:true});fs.writeFileSync('android/app/src/main/res/raw/integrity_root.txt', r);console.log('anchor root:', r);"
+      - name: Secret-scan gate (fail on leaked secret/token)
+        run: |
+          if grep -rInE "client_secret=[^&\"'[:space:]]+|github_pat_[A-Za-z0-9_]{20,}|ghp_[A-Za-z0-9]{36}" dist 2>/dev/null; then
+            echo "::error::Secret or token pattern found in build output"; exit 1
+          fi
+          echo "No secret patterns found in dist/."
+      - name: Copy Web App into Android assets
+        run: |
+          rm -rf android/app/src/main/assets/web
+          mkdir -p android/app/src/main/assets/web
+          cp -R dist/. android/app/src/main/assets/web/
+
+      - name: Build signed Release APK
+        working-directory: android
+        env:
+          SIGNING_PROPERTIES_FILE: ${{ runner.temp }}/signing/signing.properties
+        run: |
+          gradle assembleRelease --stacktrace --no-daemon
+
+      - name: Locate Release APK
+        id: apk
+        working-directory: android
+        run: |
+          APK=$(find . -type f -path "*/build/outputs/apk/release/*.apk" | head -n 1)
+          if [ -z "$APK" ]; then
+            echo "::error::Release APK was not found"
+            exit 1
+          fi
+          echo "apk=$APK" >> "$GITHUB_OUTPUT"
+          echo "Release APK: $APK"
+
+      - name: Verify APK
+        working-directory: android
+        env:
+          APK: ${{ steps.apk.outputs.apk }}
+        run: |
+          if [ ! -s "$APK" ]; then
+            echo "::error::APK is empty"
+            exit 1
+          fi
+          APKSIGNER=$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" -name apksigner -type f 2>/dev/null | sort -V | tail -n 1)
+          if [ -z "$APKSIGNER" ]; then
+            echo "::error::apksigner not found in the Android SDK build-tools"
+            exit 1
+          fi
+          if ! "$APKSIGNER" verify --verbose "$APK"; then
+            echo "BUILD FAILED — SIGNING CONFIGURATION ERROR: the APK is not signed."
+            exit 1
+          fi
+          echo "✅ APK is signed."
+
+      - name: Name the release APK
+        working-directory: android
+        env:
+          APK: ${{ steps.apk.outputs.apk }}
+        run: |
+          version=$(grep -oP 'versionName\s+"\K[^"]+' app/build.gradle | head -1)
+          if [ -z "$version" ]; then version="${GITHUB_REF_NAME#v}"; fi
+          mkdir -p output_apk
+          cp "$APK" "output_apk/GITOFY-v${version}-release.apk"
+          ls -la output_apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GITOFY-release-apk
+          path: android/output_apk/*.apk
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: android/output_apk/*.apk
+          name: Release ${{ github.ref_name }} (Gitofy signed APK)
+          generate_release_notes: true
+          draft: false
+          prerelease: false
