@@ -1,4 +1,4 @@
-name: Android Release (Signed APK)
+name: Android Release (Unsigned APK)
 on:
   push:
     tags: ["v*"]
@@ -21,33 +21,35 @@ jobs:
         with:
           node-version-file: ".nvmrc"
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.4"
       - name: Install dependencies
         run: npm install --legacy-peer-deps --no-audit --no-fund
       - name: Lint and typecheck (B-09)
         run: npm run lint
-      - name: Build Signed Release APK
+      - name: Build Unsigned Release APK
         working-directory: android
         run: |
-          chmod +x gradlew
-          ./gradlew assembleRelease --stacktrace
+          gradle assembleRelease --stacktrace --no-daemon
       - name: Rename & Locate Release APK
         working-directory: android
         run: |
           mkdir -p output_apk
-          find app/build/outputs/apk/release -name "*.apk" -exec cp {} output_apk/gitofy-release.apk \;
+          find app/build/outputs/apk/release -name "*-unsigned.apk" -print -quit | xargs -r -I{} cp "{}" output_apk/gitofy-release-unsigned.apk
+          test -f output_apk/gitofy-release-unsigned.apk
       - name: Upload Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gitofy-release-apk
-          path: android/output_apk/gitofy-release.apk
+          name: gitofy-release-unsigned-apk
+          path: android/output_apk/gitofy-release-unsigned.apk
           if-no-files-found: error
-      - name: Publish GitHub Release with Signed APK
+      - name: Publish GitHub Release with Unsigned APK
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            android/output_apk/gitofy-release.apk
-          name: Release ${{ github.ref_name }} (Gitofy Android APK)
+            android/output_apk/gitofy-release-unsigned.apk
+          name: Release ${{ github.ref_name }} (Gitofy Unsigned Android APK)
           generate_release_notes: true
           draft: false
           prerelease: false

@@ -26,18 +26,19 @@ jobs:
         with:
           node-version-file: ".nvmrc"
       - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.4"
       - name: Install dependencies
         run: npm install --legacy-peer-deps --no-audit --no-fund
       - name: Lint and typecheck (B-09)
         run: npm run lint
-      - name: Build Debug APK
+      - name: Build Unsigned Release APK
         working-directory: android
         run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
-      - name: Upload Debug APK Artifact
+          gradle assembleRelease --stacktrace --no-daemon
+      - name: Upload Unsigned Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: gitofy-debug-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: gitofy-release-unsigned-apk
+          path: android/app/build/outputs/apk/release/*-unsigned.apk
           if-no-files-found: warn

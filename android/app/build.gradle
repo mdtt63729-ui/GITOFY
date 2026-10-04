@@ -26,8 +26,7 @@ android {
             minifyEnabled false
             shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            // B-04: Signed release APK: use release keystore if configured, fallback to debug keystore so APK is always installable
-            signingConfig signingConfigs.debug
+            // Gitofy release is intentionally UNSIGNED. Do not attach a debug/release keystore here.
         }
     }
 
