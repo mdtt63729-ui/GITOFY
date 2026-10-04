@@ -17,7 +17,7 @@ export const AndroidFrame: React.FC<AndroidFrameProps> = ({ children }) => {
     >
       {/* Full screen mobile container without fake bezels or fake status bars */}
       <main
-        className="w-full sm:max-w-[480px] h-[100dvh] flex flex-col relative overflow-hidden select-none"
+        className="w-full sm:max-w-[480px] h-[100dvh] min-h-0 flex flex-col relative overflow-hidden select-none"
         style={{
           backgroundColor: colors.background,
           color: colors.onBackground,

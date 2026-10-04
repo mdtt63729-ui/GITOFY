@@ -76,7 +76,7 @@ export const M3BottomSheet: React.FC<M3BottomSheetProps> = ({
         )}
 
         {/* Scrollable Content */}
-        <div className="p-6 overflow-y-auto overscroll-contain flex-1">
+        <div className="p-6 gitofy-scroll flex-1">
           {children}
         </div>
       </div>

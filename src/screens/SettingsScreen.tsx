@@ -12,6 +12,7 @@ export interface SettingsScreenProps {
   onTokenUpdated?: () => void;
   onOpenGallery?: () => void;
   onOpenMotionLab?: () => void;
+  onLogout?: () => void;
 }
 
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
@@ -19,6 +20,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onTokenUpdated,
   onOpenGallery,
   onOpenMotionLab,
+  onLogout,
 }) => {
   const { colors, settings, updateSettings, triggerHaptic } = useTheme();
   const [tokenInput, setTokenInput] = useState(settings.personalAccessToken);
@@ -59,7 +61,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-y-auto overscroll-contain select-none">
+    <div className="flex-1 flex flex-col gitofy-scroll select-none">
       {/* Top Bar */}
       <div
         className="sticky top-0 z-30 px-4 py-3 backdrop-blur-md border-b flex items-center justify-between"
@@ -154,34 +156,42 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             Appearance & Tonal Palettes
           </span>
 
-          {/* Theme Mode */}
+          {/* UI Mode */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold">Theme Mode</label>
-            <div className="grid grid-cols-3 gap-2">
-              {(['dark', 'light', 'system'] as const).map((mode) => (
+            <label className="text-xs font-semibold">UI Mode</label>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { id: 'nxt' as const, label: 'NXT UI', description: 'Reference visual system' },
+                { id: 'light' as const, label: 'Light Mode', description: 'Material 3 palettes' },
+              ]).map((mode) => (
                 <button
-                  key={mode}
+                  key={mode.id}
                   type="button"
-                  onClick={() => updateSettings({ themeMode: mode })}
-                  className={`py-2 px-3 rounded-2xl text-xs font-bold border transition-all cursor-pointer ${
-                    settings.themeMode === mode ? 'ring-2' : ''
+                  onClick={() => updateSettings({ uiMode: mode.id, ...(mode.id === 'light' ? { themeMode: 'light' as const } : {}) })}
+                  className={`py-3 px-3 rounded-2xl text-left border transition-all cursor-pointer ${
+                    settings.uiMode === mode.id ? 'ring-2' : ''
                   }`}
                   style={{
-                    backgroundColor:
-                      settings.themeMode === mode ? colors.primary : colors.surfaceContainerLowest,
-                    color: settings.themeMode === mode ? colors.onPrimary : colors.onSurface,
+                    backgroundColor: settings.uiMode === mode.id ? colors.primary : colors.surfaceContainerLowest,
+                    color: settings.uiMode === mode.id ? colors.onPrimary : colors.onSurface,
                     borderColor: colors.outlineVariant,
                   }}
                 >
-                  {mode.toUpperCase()}
+                  <span className="block text-xs font-bold">{mode.label}</span>
+                  <span className="block text-[10px] mt-0.5 opacity-75">{mode.description}</span>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Color Palettes */}
-          <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold">M3 Accent Palette</label>
+          {/* M3 Color Palettes — only editable in Light Mode */}
+          <div className={`flex flex-col gap-1.5 transition-opacity ${settings.uiMode === 'nxt' ? 'opacity-45' : ''}`}>
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-semibold">M3 Accent Palette</label>
+              {settings.uiMode === 'nxt' && (
+                <span className="text-[10px] font-bold" style={{ color: colors.onSurfaceVariant }}>Disabled in NXT UI</span>
+              )}
+            </div>
             <div className="grid grid-cols-3 gap-2">
               {[
                 { id: 'emerald', label: 'Emerald' },
@@ -193,14 +203,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 <button
                   key={pal.id}
                   type="button"
+                  disabled={settings.uiMode === 'nxt'}
                   onClick={() => updateSettings({ palette: pal.id as any })}
                   className={`py-2 px-2.5 rounded-2xl text-xs font-bold border transition-all cursor-pointer ${
                     settings.palette === pal.id ? 'ring-2' : ''
-                  }`}
+                  } ${settings.uiMode === 'nxt' ? 'cursor-not-allowed' : ''}`}
                   style={{
-                    backgroundColor:
-                      settings.palette === pal.id ? colors.primary : colors.surfaceContainerLowest,
-                    color: settings.palette === pal.id ? colors.onPrimary : colors.onSurface,
+                    backgroundColor: settings.palette === pal.id && settings.uiMode !== 'nxt' ? colors.primary : colors.surfaceContainerLowest,
+                    color: settings.palette === pal.id && settings.uiMode !== 'nxt' ? colors.onPrimary : colors.onSurface,
                     borderColor: colors.outlineVariant,
                   }}
                 >
@@ -433,6 +443,22 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <span>→</span>
             </M3Button>
           </div>
+          {onLogout && (
+            <div
+              className="p-4 rounded-3xl border"
+              style={{ backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant }}
+            >
+              <M3Button
+                variant="destructive-filled"
+                shape="capsule"
+                size="large"
+                className="w-full"
+                onClick={() => { triggerHaptic('heavy'); onLogout(); }}
+              >
+                Log out of GitHub
+              </M3Button>
+            </div>
+          )}
         </div>
       </div>
     </div>

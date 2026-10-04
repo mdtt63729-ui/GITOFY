@@ -13,6 +13,7 @@ export interface Repository {
   language: string | null;
   languages?: Array<{ name: string; percentage: number; color: string }>;
   updated_at: string;
+  size?: number;
   owner: {
     login: string;
     avatar_url: string;
@@ -183,4 +184,6 @@ export type AppScreen =
   | 'workflows'
   | 'settings'
   | 'm3_gallery'
-  | 'motion_lab';
+  | 'motion_lab'
+  | 'delete_repo'
+  | 'repo_action';

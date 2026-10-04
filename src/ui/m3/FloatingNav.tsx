@@ -40,17 +40,10 @@ export const FloatingNav: React.FC<FloatingNavProps> = ({
 
   return (
     <div
-      className={`fixed left-0 right-0 z-30 flex justify-center pointer-events-none transition-all ${
-        visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-24'
+      className={`fixed left-0 right-0 z-30 flex justify-center pointer-events-none ${
+        visible ? 'nav-reveal-bounce' : 'nav-hide-down'
       }`}
-      style={{
-        bottom: '16px',
-        transitionDuration: visible ? '360ms' : '220ms',
-        // Section 4.5 & 6.1: bounce.nav spring when returning, accelerated drop when hiding
-        transitionTimingFunction: visible
-          ? 'cubic-bezier(0.34, 1.35, 0.64, 1)'
-          : 'cubic-bezier(0.4, 0, 1, 1)',
-      }}
+      style={{ bottom: '16px' }}
     >
       <nav
         role="navigation"

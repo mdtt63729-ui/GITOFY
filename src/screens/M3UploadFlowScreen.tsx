@@ -13,6 +13,14 @@ import { M3Chip } from '../ui/m3/M3Chip';
 
 export type FlowStage = 'calculating' | 'diff_review' | 'uploading' | 'success' | 'error';
 
+const phaseLabels: Record<string, string> = {
+  validating: 'Validating project…', extracting: 'Extracting project…', indexing: 'Indexing files…',
+  hashing: 'Checking file changes…', diffing: 'Comparing changes…', git_prep: 'Preparing Git…',
+  uploading: 'Uploading changes…', committing: 'Creating commit…', pushing: 'Pushing to GitHub…',
+  verifying: 'Verifying repository…', completed: 'Upload complete', paused: 'Upload paused',
+  error: 'Upload interrupted', cancelled: 'Upload cancelled',
+};
+
 export interface M3UploadFlowScreenProps {
   repo: Repository;
   zipFile: File;
@@ -48,6 +56,10 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
 
   // Uploading Stage State
   const [uploadProgress, setUploadProgress] = useState(5);
+  const [uploadPhase, setUploadPhase] = useState('uploading');
+  const [previousUploadFile, setPreviousUploadFile] = useState('Preparing Git working tree...');
+  const uploadFileRef = useRef('Preparing Git working tree...');
+  const [uploadFileRevision, setUploadFileRevision] = useState(0);
   const [currentFileText, setCurrentFileText] = useState('Initializing Ultra-Fast Git Engine...');
   const [completedFiles, setCompletedFiles] = useState(0);
   const [totalFiles, setTotalFiles] = useState(0);
@@ -174,6 +186,12 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
         stripRootFolder: settings.stripRootFolder,
         onProgress: (state: UploadState) => {
           setUploadProgress(state.progress);
+          setUploadPhase(state.phase);
+          if (state.currentFile && state.currentFile !== uploadFileRef.current) {
+            setPreviousUploadFile(uploadFileRef.current);
+            uploadFileRef.current = state.currentFile;
+            setUploadFileRevision((v) => v + 1);
+          }
           setCurrentFileText(state.currentFile);
           setCompletedFiles(state.completedFiles);
           if (state.totalFiles) setTotalFiles(state.totalFiles);
@@ -442,126 +460,65 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
       {/* STAGE 3: REDESIGNED UPLOADING SCREEN (SECTION 20)         */}
       {/* --------------------------------------------------------- */}
       {stage === 'uploading' && (
-        <div className="flex-1 flex flex-col justify-between py-4 animate-page-enter">
-          {/* Header */}
-          <div className="w-full flex items-center justify-between">
-            <div className="flex flex-col">
-              <span className="text-xs font-mono font-medium" style={{ color: colors.primary }}>
-                {repo.full_name || repo.name}
-              </span>
-              <div className="flex items-center gap-2 mt-0.5">
-                <h2 className="text-xl font-black tracking-tight">Uploading Project</h2>
-                <span
-                  className="text-[9px] font-mono font-bold px-2 py-0.5 rounded-full uppercase"
-                  style={{
-                    backgroundColor:
-                      engineType === 'native_git_cli'
-                        ? colors.diffAddedContainer
-                        : colors.secondaryContainer,
-                    color:
-                      engineType === 'native_git_cli'
-                        ? colors.diffAdded
-                        : colors.onSecondaryContainer,
-                  }}
-                >
-                  {engineType === 'native_git_cli' ? 'Git Smart HTTP' : 'Smart Diff'}
-                </span>
+        <div className="upload-reference-screen">
+          <header className="upload-ref-topbar">
+            <button className="upload-ref-iconbtn" aria-label="Go back" onClick={() => setShowCancelDialog(true)}>
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M19 12H5M12 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <div className="upload-ref-title">Uploading</div>
+          </header>
+
+          <main className="upload-ref-content">
+            <div className="upload-ref-main">
+              <div className="upload-ref-icon">
+                <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M19.35 10.04C18.67 6.59 15.64 4 12 4C9.11 4 6.6 5.64 5.35 8.04C2.34 8.36 0 10.91 0 14C0 17.31 2.69 20 6 20H19C21.76 20 24 17.76 24 15C24 12.36 21.95 10.22 19.35 10.04ZM19 18H6C3.79 18 2 16.21 2 14C2 11.95 3.53 10.24 5.56 10.03L6.63 9.92L7.13 8.97C8.08 7.14 9.94 6 12 6C14.62 6 16.88 7.86 17.39 10.43L17.69 11.93L19.22 12.04C20.78 12.14 22 13.45 22 15C22 16.65 20.65 18 19 18ZM13.45 11H10.55V14H8L12 18L16 14H13.45V11Z" />
+                </svg>
+              </div>
+
+              <div className="upload-ref-status">
+                <div className="upload-ref-caption">{phaseLabels[uploadPhase] || 'Uploading changes…'}</div>
+                <div className="upload-ref-track">
+                  <div className="upload-ref-fill" style={{ width: `${Math.max(0, Math.min(100, Math.round(uploadProgress)))}%` }}>
+                    <span className="upload-ref-percent">{Math.round(uploadProgress)}%</span>
+                  </div>
+                </div>
+
+                <div className="upload-ref-file" key={uploadFileRevision}>
+                  <div className="upload-ref-file-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                    </svg>
+                  </div>
+                  <div className="upload-ref-file-copy">
+                    <div className="upload-ref-file-label">Changing file · {engineType === 'native_git_cli' ? 'Git Smart HTTP' : 'Smart Diff'}</div>
+                    <div className="upload-ref-file-name upload-ref-file-change" title={currentFileText}>{currentFileText}</div>
+                    {previousUploadFile !== currentFileText && (
+                      <div className="upload-ref-file-label" style={{ marginTop: 3 }}>previous: {previousUploadFile}</div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="upload-ref-metrics">
+                  <span>{completedFiles} / {totalFiles || extractedFiles.length || 1} files</span>
+                  <span>•</span>
+                  <span>{(uploadedBytes / (1024 * 1024)).toFixed(1)} / {(totalBytes / (1024 * 1024)).toFixed(1)} MB</span>
+                </div>
+
+                <div className="upload-ref-metrics">
+                  <span>{speedText}</span>
+                  {etaText && etaText !== '0s' && <><span>•</span><span>ETA {etaText}</span></>}
+                </div>
               </div>
             </div>
+          </main>
 
-            <span className="font-mono text-xl font-black" style={{ color: colors.primary }}>
-              {Math.round(uploadProgress)}%
-            </span>
-          </div>
-
-          {/* Main Hero Visual: Single Premium M3 Circular Progress */}
-          <div className="w-full flex flex-col items-center gap-5 my-auto">
-            <div className="relative flex items-center justify-center p-2">
-              <M3CircularProgress
-                determinate
-                value={uploadProgress}
-                size={148}
-                strokeWidth={9}
-                color={colors.primary}
-                trackColor={colors.surfaceContainerHighest}
-              />
-
-              <div className="absolute inset-0 flex flex-col items-center justify-center text-center p-3 select-none">
-                <span className="text-3xl font-black font-mono tracking-tight leading-none">
-                  {Math.round(uploadProgress)}%
-                </span>
-                <span className="text-xs font-bold font-mono mt-1 opacity-80" style={{ color: colors.primary }}>
-                  {speedText}
-                </span>
-                {etaText && etaText !== '0s' && (
-                  <span className="text-[10px] font-mono opacity-60 mt-0.5">
-                    ETA {etaText}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Dynamic Status Text with Smooth Crossfade */}
-            <div className="w-full max-w-xs flex flex-col items-center text-center gap-1.5 px-2">
-              <p
-                className="text-xs font-mono font-medium truncate max-w-full transition-opacity duration-150"
-                style={{ color: colors.onSurface }}
-                title={currentFileText}
-              >
-                {currentFileText}
-              </p>
-
-              {/* Metrics row */}
-              <div className="flex items-center gap-2.5 text-[11px] font-mono opacity-70">
-                <span>
-                  {completedFiles} / {totalFiles || extractedFiles.length || 1} files
-                </span>
-                <span>•</span>
-                <span>
-                  {(uploadedBytes / (1024 * 1024)).toFixed(1)} MB / {(totalBytes / (1024 * 1024)).toFixed(1)} MB
-                </span>
-              </div>
-            </div>
-
-            {/* Phase Timing Breakdown */}
-            {Object.keys(phaseTimes).length > 0 && (
-              <div className="flex flex-wrap items-center justify-center gap-1.5 max-w-xs text-[10px] font-mono opacity-80">
-                {phaseTimes.validateMs !== undefined && (
-                  <span className="px-2 py-0.5 rounded-full border" style={{ borderColor: colors.outlineVariant }}>
-                    Validate: {(phaseTimes.validateMs / 1000).toFixed(1)}s
-                  </span>
-                )}
-                {phaseTimes.extractMs !== undefined && (
-                  <span className="px-2 py-0.5 rounded-full border" style={{ borderColor: colors.outlineVariant }}>
-                    Extract: {(phaseTimes.extractMs / 1000).toFixed(1)}s
-                  </span>
-                )}
-                {phaseTimes.diffMs !== undefined && (
-                  <span className="px-2 py-0.5 rounded-full border" style={{ borderColor: colors.outlineVariant }}>
-                    Diff: {(phaseTimes.diffMs / 1000).toFixed(1)}s
-                  </span>
-                )}
-                {phaseTimes.pushMs !== undefined && (
-                  <span className="px-2 py-0.5 rounded-full border" style={{ borderColor: colors.outlineVariant }}>
-                    Push: {(phaseTimes.pushMs / 1000).toFixed(1)}s
-                  </span>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Cancel Upload Button */}
-          <div className="w-full max-w-sm mx-auto">
-            <M3Button
-              variant="tonal"
-              shape="capsule"
-              size="large"
-              className="w-full font-bold"
-              onClick={() => setShowCancelDialog(true)}
-            >
-              Cancel Upload
-            </M3Button>
-          </div>
+          <footer className="upload-ref-bottom">
+            <button className="upload-ref-button" onClick={() => setShowCancelDialog(true)}>Cancel upload</button>
+          </footer>
         </div>
       )}
 

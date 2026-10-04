@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { useTheme } from '../ui/ThemeContext';
 import { InboxItem } from '../types';
 import { M3Chip } from '../ui/m3/M3Chip';
@@ -13,6 +13,7 @@ export interface InboxScreenProps {
   onDeleteItem?: (id: string) => void;
   onNavigateToRepo?: (repoName: string) => void;
   onScrollDelta: (scrollTop: number, delta: number) => void;
+  onDetailVisibilityChange?: (open: boolean) => void;
 }
 
 export const InboxScreen: React.FC<InboxScreenProps> = ({
@@ -22,23 +23,33 @@ export const InboxScreen: React.FC<InboxScreenProps> = ({
   onDeleteItem,
   onNavigateToRepo,
   onScrollDelta,
+  onDetailVisibilityChange,
 }) => {
   const { colors, triggerHaptic } = useTheme();
   const [filter, setFilter] = useState<'all' | 'unread' | 'workflow' | 'push'>('all');
   const [selectedMessage, setSelectedMessage] = useState<InboxItem | null>(null);
-  const [lastScrollTop, setLastScrollTop] = useState(0);
+  const lastScrollTopRef = useRef(0);
+  const scrollFrameRef = useRef<number | null>(null);
+  const pendingScrollRef = useRef<{ top: number; delta: number } | null>(null);
 
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const currentTop = e.currentTarget.scrollTop;
-    const delta = currentTop - lastScrollTop;
-    setLastScrollTop(currentTop);
-    onScrollDelta(currentTop, delta);
-  };
+    const delta = currentTop - lastScrollTopRef.current;
+    lastScrollTopRef.current = currentTop;
+    pendingScrollRef.current = { top: currentTop, delta };
+    if (scrollFrameRef.current !== null) return;
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      const pending = pendingScrollRef.current;
+      if (pending) onScrollDelta(pending.top, pending.delta);
+    });
+  }, [onScrollDelta]);
 
   const handleItemPress = (item: InboxItem) => {
     triggerHaptic('tick');
     onItemClick(item);
     setSelectedMessage(item);
+    onDetailVisibilityChange?.(true);
   };
 
   const filteredItems = items.filter((item) => {
@@ -51,7 +62,7 @@ export const InboxScreen: React.FC<InboxScreenProps> = ({
   return (
     <div
       onScroll={handleScroll}
-      className="relative flex-1 flex flex-col overflow-y-auto overscroll-contain select-none"
+      className="relative flex-1 flex flex-col gitofy-scroll select-none"
     >
       {/* Header */}
       <div
@@ -211,7 +222,7 @@ export const InboxScreen: React.FC<InboxScreenProps> = ({
       {/* Message Content Details Bottom Sheet */}
       <M3BottomSheet
         isOpen={Boolean(selectedMessage)}
-        onClose={() => setSelectedMessage(null)}
+        onClose={() => { setSelectedMessage(null); onDetailVisibilityChange?.(false); }}
         title="Notification Details"
         subtitle={selectedMessage?.timestamp}
       >

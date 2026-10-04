@@ -52,6 +52,50 @@ export interface M3ColorScheme {
   diffUnchanged: string;
 }
 
+
+/** NXT UI — reference-inspired light palette (lavender / ice / violet / pink). */
+export const nxtTheme: M3ColorScheme = {
+  primary: '#8B4DE2',
+  onPrimary: '#FFFFFF',
+  primaryContainer: '#E9D8FF',
+  onPrimaryContainer: '#2C0A4A',
+  secondary: '#6554B4',
+  onSecondary: '#FFFFFF',
+  secondaryContainer: '#E6DEFF',
+  onSecondaryContainer: '#21164A',
+  tertiary: '#C95B9D',
+  onTertiary: '#FFFFFF',
+  tertiaryContainer: '#FFD9EC',
+  onTertiaryContainer: '#3A0928',
+  error: '#C52A3A',
+  onError: '#FFFFFF',
+  errorContainer: '#FFDAD9',
+  onErrorContainer: '#410006',
+  background: '#EEEFFC',
+  onBackground: '#171827',
+  surface: '#F8F9FF',
+  onSurface: '#171827',
+  surfaceVariant: '#E8E9F6',
+  onSurfaceVariant: '#5D6070',
+  surfaceContainerLowest: '#FFFFFF',
+  surfaceContainerLow: '#F5F6FD',
+  surfaceContainer: '#EEF0F9',
+  surfaceContainerHigh: '#E9EAF5',
+  surfaceContainerHighest: '#E1E3F0',
+  outline: '#8C8E9D',
+  outlineVariant: '#D7D8E5',
+  inverseSurface: '#2E2F3B',
+  inverseOnSurface: '#F2F2FA',
+  inversePrimary: '#D5B8FF',
+  diffAdded: '#16864A',
+  diffAddedContainer: '#D7F6E1',
+  diffModified: '#9A6700',
+  diffModifiedContainer: '#FFF1C7',
+  diffDeleted: '#CF3340',
+  diffDeletedContainer: '#FFE8E8',
+  diffUnchanged: '#666A78',
+};
+
 export const lightThemes: Record<string, M3ColorScheme> = {
   pink: {
     primary: '#9B4062',
@@ -660,6 +704,8 @@ export const darkThemes: Record<string, M3ColorScheme> = {
 
 export interface GitofySettings {
   // Theme & Appearance
+  /** NXT is the new default visual system; Light exposes the M3 palette controls. */
+  uiMode: 'nxt' | 'light';
   themeMode: 'light' | 'dark' | 'system';
   palette: 'pink' | 'emerald' | 'indigo' | 'violet' | 'crimson' | 'cyan';
   fontScale: number;
@@ -695,7 +741,8 @@ export interface GitofySettings {
 }
 
 export const defaultSettings: GitofySettings = {
-  themeMode: 'dark',
+  uiMode: 'nxt',
+  themeMode: 'light',
   palette: 'pink',
   fontScale: 1.0,
   cornerRadius: 16,

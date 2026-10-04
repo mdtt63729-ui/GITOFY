@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../ui/ThemeContext';
 import { M3Button } from '../ui/m3/M3Button';
 import { M3TextField } from '../ui/m3/M3TextField';
@@ -18,19 +18,34 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
     avatarUrl: string;
   } | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
+  const verifyingTokenRef = useRef('');
+  const verificationTimerRef = useRef<number | null>(null);
 
   // Auto-verify when user pastes or types a 40+ char token
   useEffect(() => {
     const trimmed = token.trim();
+    if (verificationTimerRef.current !== null) window.clearTimeout(verificationTimerRef.current);
     if (trimmed.length >= 35 && (trimmed.startsWith('ghp_') || trimmed.startsWith('github_pat_'))) {
-      runVerification(trimmed);
+      verificationTimerRef.current = window.setTimeout(() => {
+        if (verifyingTokenRef.current !== trimmed) runVerification(trimmed);
+      }, 350);
     } else {
       setValidatedUser(null);
       setErrorMsg('');
+      verifyingTokenRef.current = '';
     }
+    return () => {
+      if (verificationTimerRef.current !== null) window.clearTimeout(verificationTimerRef.current);
+    };
   }, [token]);
 
+  useEffect(() => () => {
+    if (verificationTimerRef.current !== null) window.clearTimeout(verificationTimerRef.current);
+  }, []);
+
   const runVerification = async (pat: string) => {
+    if (verifyingTokenRef.current === pat) return;
+    verifyingTokenRef.current = pat;
     setIsValidating(true);
     setErrorMsg('');
     const res = await validateGitHubToken(pat);
@@ -70,7 +85,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
   };
 
   return (
-    <div className="flex-1 flex flex-col justify-between p-6 select-none overflow-y-auto overscroll-contain animate-fade-in">
+    <div className="flex-1 flex flex-col justify-between p-6 select-none gitofy-scroll animate-fade-in">
       {step === 1 ? (
         /* Step 1: Welcome */
         <div className="flex-1 flex flex-col justify-between my-auto py-6">

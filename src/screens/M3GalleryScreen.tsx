@@ -30,7 +30,7 @@ export const M3GalleryScreen: React.FC<M3GalleryScreenProps> = ({ onBack }) => {
 
   return (
     <div
-      className="flex-1 flex flex-col overflow-y-auto overscroll-contain select-none"
+      className="flex-1 flex flex-col gitofy-scroll select-none"
       style={{ backgroundColor: colors.surface, color: colors.onSurface }}
     >
       {/* Top App Bar */}
@@ -54,12 +54,12 @@ export const M3GalleryScreen: React.FC<M3GalleryScreenProps> = ({ onBack }) => {
           </div>
         </div>
 
-        {/* Theme mode quick toggle */}
+        {/* UI mode quick toggle */}
         <button
           type="button"
           onClick={() => {
             triggerHaptic('tick');
-            updateSettings({ themeMode: settings.themeMode === 'dark' ? 'light' : 'dark' });
+            updateSettings({ uiMode: settings.uiMode === 'nxt' ? 'light' : 'nxt', themeMode: 'light' });
           }}
           className="px-2.5 py-1 rounded-full text-xs font-mono font-bold border cursor-pointer"
           style={{
@@ -68,7 +68,7 @@ export const M3GalleryScreen: React.FC<M3GalleryScreenProps> = ({ onBack }) => {
             color: colors.primary,
           }}
         >
-          {settings.themeMode === 'dark' ? 'Dark' : 'Light'}
+          {settings.uiMode === 'nxt' ? 'NXT UI' : 'Light'}
         </button>
       </div>
 

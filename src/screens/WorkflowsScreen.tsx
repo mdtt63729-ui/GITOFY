@@ -184,7 +184,7 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-y-auto overscroll-contain select-none animate-fade-in">
+    <div className="flex-1 flex flex-col gitofy-scroll select-none animate-fade-in">
       {/* Top App Bar */}
       <div
         className="sticky top-0 z-30 px-4 py-3 backdrop-blur-md border-b flex items-center justify-between"
@@ -312,6 +312,18 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
           </div>
 
           <div className="flex flex-col gap-2">
+            {!isLoadingWorkflows && workflows.length === 0 && (
+              <div
+                className="p-6 rounded-3xl border border-dashed text-center flex flex-col items-center gap-2"
+                style={{ borderColor: colors.outlineVariant, backgroundColor: colors.surfaceContainerLowest }}
+              >
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}>
+                  <span className="text-xl">✓</span>
+                </div>
+                <span className="text-sm font-bold">No workflows in this repository</span>
+                <span className="text-xs opacity-70">Gitofy shows only workflows that actually exist on GitHub.</span>
+              </div>
+            )}
             {workflows.map((wf) => {
               const isSelected = selectedWorkflow?.id === wf.id;
 

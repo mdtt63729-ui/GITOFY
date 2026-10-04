@@ -1,24 +1,5 @@
 import { Repository, WorkflowItem, WorkflowRun, InboxItem, DiffSummary, GitHubRelease } from '../types';
 
-export const INITIAL_DEMO_WORKFLOWS: WorkflowItem[] = [
-  {
-    id: 101,
-    name: 'Android CI (Debug APK)',
-    path: '.github/workflows/android-ci.yml',
-    state: 'active',
-    last_run_status: 'success',
-    last_run_at: '2 hours ago',
-  },
-  {
-    id: 102,
-    name: 'Android Release (Unsigned APK)',
-    path: '.github/workflows/android-release.yml',
-    state: 'active',
-    last_run_status: 'in_progress',
-    last_run_at: 'Just now',
-  },
-];
-
 /**
  * Fetches real GitHub Actions workflows for a repository
  */
@@ -58,25 +39,8 @@ export async function fetchRepoWorkflows(
     // Fallback
   }
 
-  // If no workflows are defined on GitHub yet, provide standard Android CI templates
-  return [
-    {
-      id: 101,
-      name: 'Android CI (Debug APK)',
-      path: '.github/workflows/android-ci.yml',
-      state: 'active',
-      last_run_status: 'success',
-      last_run_at: 'Configured',
-    },
-    {
-      id: 102,
-      name: 'Android Release (Unsigned APK)',
-      path: '.github/workflows/android-release.yml',
-      state: 'active',
-      last_run_status: 'queued',
-      last_run_at: 'Configured',
-    },
-  ];
+  // Never fabricate/demo workflows. An empty repository must show an empty state.
+  return [];
 }
 
 /**
@@ -307,18 +271,69 @@ export async function cancelWorkflowRun(
   return res.status === 202;
 }
 
-export const INITIAL_INBOX_ITEMS: InboxItem[] = [
-  {
-    id: 'inbox-1',
-    title: 'Gitofy Ready',
-    repo: 'Gitofy App',
-    summary: 'Material 3 design system, Ultra-Fast Git push engine, and Actions APK installer initialized.',
-    type: 'workflow',
-    status: 'success',
-    timestamp: 'Just now',
-    read: false,
-  },
-];
+/**
+ * Builds the inbox from real GitHub notifications and recent Actions runs.
+ * Actions runs are queried per known repository because GitHub notifications do not
+ * reliably surface build success/failure events for every repository.
+ */
+export async function fetchUserActivityInbox(
+  repos: Repository[],
+  token?: string
+): Promise<InboxItem[]> {
+  if (!token?.trim()) return [];
+
+  const notificationItems = await fetchUserInbox(token);
+  const candidates = repos.slice(0, 20);
+  const headers = {
+    Authorization: `Bearer ${token.trim()}`,
+    Accept: 'application/vnd.github.v3+json',
+  };
+
+  const runGroups = await Promise.all(
+    candidates.map(async (repo) => {
+      try {
+        const res = await fetch(
+          `https://api.github.com/repos/${repo.owner.login}/${repo.name}/actions/runs?per_page=8`,
+          { headers }
+        );
+        if (!res.ok) return [];
+        const data = await res.json();
+        return Array.isArray(data.workflow_runs) ? data.workflow_runs : [];
+      } catch {
+        return [];
+      }
+    })
+  );
+
+  const actionItems: InboxItem[] = runGroups.flat().map((run: any) => {
+    const isSuccess = run.conclusion === 'success';
+    const isFailure = run.conclusion === 'failure' || run.conclusion === 'timed_out' || run.conclusion === 'cancelled';
+    const status: InboxItem['status'] = isSuccess ? 'success' : isFailure ? 'failure' : 'info';
+    const stateLabel = isSuccess ? 'Build successful' : isFailure ? 'Build failed' : `Build ${run.status || 'queued'}`;
+    const repoName = run.repository?.full_name || candidates.find((r) => r.id === run.repository_id)?.full_name || 'Repository';
+    return {
+      id: `workflow-${run.id}`,
+      title: `${stateLabel}: ${run.name || 'GitHub Actions'}`,
+      repo: repoName,
+      summary: `${run.event || 'workflow'} • ${run.head_branch || 'main'} • Run #${run.run_number ?? ''}`,
+      type: 'workflow',
+      status,
+      timestamp: run.updated_at ? new Date(run.updated_at).toLocaleString() : 'Recently',
+      read: false,
+      details: `Status: ${run.status || 'unknown'}\nConclusion: ${run.conclusion || 'in progress'}\nCommit: ${(run.head_sha || '').slice(0, 7)}`,
+      commitSha: (run.head_sha || '').slice(0, 7),
+      branch: run.head_branch || 'main',
+      linkUrl: run.html_url,
+    } as InboxItem;
+  });
+
+  const merged = [...actionItems, ...notificationItems];
+  const unique = new Map<string, InboxItem>();
+  merged.forEach((item) => unique.set(item.id, item));
+  return [...unique.values()]
+    .sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp))
+    .slice(0, 60);
+}
 
 /**
  * Fetches real releases for a repository from GitHub API
@@ -424,46 +439,39 @@ export async function fetchUserRepos(token: string): Promise<Repository[]> {
     return [];
   }
 
-  const allRawRepos: any[] = [];
-  let page = 1;
-  let hasNext = true;
-  const maxPages = 6; // Up to 600 repositories supported seamlessly
+  const headers = {
+    Authorization: `Bearer ${token.trim()}`,
+    Accept: 'application/vnd.github.v3+json',
+  };
+  const endpoint = (page: number) =>
+    `https://api.github.com/user/repos?per_page=100&page=${page}&sort=updated&affiliation=owner,collaborator,organization_member`;
 
-  while (hasNext && page <= maxPages) {
-    try {
-      const res = await fetch(
-        `https://api.github.com/user/repos?per_page=100&page=${page}&sort=updated&affiliation=owner,collaborator,organization_member`,
-        {
-          headers: {
-            Authorization: `Bearer ${token.trim()}`,
-            Accept: 'application/vnd.github.v3+json',
-          },
-        }
-      );
+  // Fetch page 1 first to discover the last page, then fetch remaining pages concurrently.
+  // This avoids the old sequential 6-request startup delay.
+  const firstRes = await fetch(endpoint(1), { headers });
+  if (!firstRes.ok) {
+    const err = await firstRes.json().catch(() => ({}));
+    throw new Error(err.message || `Failed to fetch repos (HTTP ${firstRes.status})`);
+  }
+  const firstPage = await firstRes.json();
+  if (!Array.isArray(firstPage) || firstPage.length === 0) return [];
 
-      if (!res.ok) {
-        if (page === 1) {
-          const err = await res.json().catch(() => ({}));
-          throw new Error(err.message || `Failed to fetch repos (HTTP ${res.status})`);
-        }
-        break;
-      }
+  const allRawRepos: any[] = [...firstPage];
+  const linkHeader = firstRes.headers.get('link') || '';
+  const lastMatch = linkHeader.match(/<[^>]*[?&]page=(\d+)[^>]*>; rel="last"/);
+  const lastPage = Math.min(Number(lastMatch?.[1] || 1), 6);
 
-      const data = await res.json();
-      if (!Array.isArray(data) || data.length === 0) break;
-
-      allRawRepos.push(...data);
-
-      const linkHeader = res.headers.get('link') || '';
-      if (!linkHeader.includes('rel="next"')) {
-        hasNext = false;
-      } else {
-        page++;
-      }
-    } catch (err) {
-      if (page === 1) throw err;
-      break;
-    }
+  if (lastPage > 1) {
+    const pages = await Promise.all(
+      Array.from({ length: lastPage - 1 }, (_, i) =>
+        fetch(endpoint(i + 2), { headers }).then(async (res) => {
+          if (!res.ok) return [];
+          const data = await res.json();
+          return Array.isArray(data) ? data : [];
+        }).catch(() => [])
+      )
+    );
+    pages.forEach((items) => allRawRepos.push(...items));
   }
 
   // Map repositories without firing separate N+1 /languages calls (G-02)
@@ -509,6 +517,7 @@ export async function fetchUserRepos(token: string): Promise<Repository[]> {
       language: trueLang,
       languages: languagesList,
       updated_at: r.updated_at,
+      size: Number(r.size || 0),
       owner: {
         login: r.owner?.login || '',
         avatar_url: r.owner?.avatar_url || '',
@@ -947,4 +956,73 @@ export async function performRealGitPush(
 
   onProgress(100, 'Commit and push successful!', 'Done');
   return { success: true, sha: newCommitSha.substring(0, 7) };
+}
+
+/**
+ * Remove every tracked file from a repository in a single Git commit.
+ * This clears source files, folders and workflow files without deleting the repository itself.
+ */
+export async function clearGitHubRepoContents(owner: string, repo: string, branch: string, token: string): Promise<string> {
+  if (!token.trim()) throw new Error('GitHub Personal Access Token is required.');
+  const headers = {
+    Authorization: `Bearer ${token.trim()}`,
+    Accept: 'application/vnd.github.v3+json',
+    'Content-Type': 'application/json',
+  };
+
+  const refRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(branch)}`, { headers });
+  if (!refRes.ok) throw new Error(`Could not read ${branch} branch.`);
+  const ref = await refRes.json();
+  const headSha = ref.object?.sha;
+  if (!headSha) throw new Error('Repository branch head was not found.');
+
+  const commitRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/commits/${headSha}`, { headers });
+  if (!commitRes.ok) throw new Error('Could not read the latest repository commit.');
+  const commit = await commitRes.json();
+  const treeSha = commit.tree?.sha;
+  if (!treeSha) throw new Error('Repository tree was not found.');
+
+  const treeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees/${treeSha}?recursive=1`, { headers });
+  if (!treeRes.ok) throw new Error('Could not read repository files.');
+  const tree = await treeRes.json();
+  const entries = Array.isArray(tree.tree) ? tree.tree : [];
+  const deletions = entries
+    .filter((entry: { type?: string; path?: string }) => (entry.type === 'blob' || entry.type === 'commit') && entry.path)
+    .map((entry: { path: string }) => ({ path: entry.path, mode: '100644', type: 'blob', sha: null }));
+
+  if (deletions.length === 0) return headSha;
+
+  const newTreeRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/trees`, {
+    method: 'POST', headers,
+    body: JSON.stringify({ base_tree: treeSha, tree: deletions }),
+  });
+  if (!newTreeRes.ok) {
+    const e = await newTreeRes.json().catch(() => ({}));
+    throw new Error(e.message || 'Could not create the empty repository tree.');
+  }
+  const newTree = await newTreeRes.json();
+
+  const newCommitRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/commits`, {
+    method: 'POST', headers,
+    body: JSON.stringify({
+      message: 'Clear repository contents via Gitofy',
+      tree: newTree.sha,
+      parents: [headSha],
+    }),
+  });
+  if (!newCommitRes.ok) {
+    const e = await newCommitRes.json().catch(() => ({}));
+    throw new Error(e.message || 'Could not create the cleanup commit.');
+  }
+  const newCommit = await newCommitRes.json();
+
+  const updateRefRes = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${encodeURIComponent(branch)}`, {
+    method: 'PATCH', headers,
+    body: JSON.stringify({ sha: newCommit.sha, force: false }),
+  });
+  if (!updateRefRes.ok) {
+    const e = await updateRefRes.json().catch(() => ({}));
+    throw new Error(e.message || 'Could not update the repository branch.');
+  }
+  return newCommit.sha;
 }

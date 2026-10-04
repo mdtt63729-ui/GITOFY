@@ -11,6 +11,8 @@ export interface RepoDashboardScreenProps {
   onUpdateWithZip: () => void;
   onRunWorkflows: () => void;
   onDeleteRepo: () => void;
+  onDeleteContents: () => void;
+  onShareRepo: () => void;
 }
 
 interface AssetDownloadState {
@@ -50,9 +52,12 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
   onUpdateWithZip,
   onRunWorkflows,
   onDeleteRepo,
+  onDeleteContents,
+  onShareRepo,
 }) => {
   const { colors, settings, triggerHaptic } = useTheme();
   const [activeTab, setActiveTab] = useState<'overview' | 'releases'>('overview');
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [releases, setReleases] = useState<GitHubRelease[]>([]);
   const [isLoadingReleases, setIsLoadingReleases] = useState(false);
   const [activeLanguages, setActiveLanguages] = useState<Array<{ name: string; percentage: number; color: string }>>(
@@ -355,7 +360,7 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-y-auto overscroll-contain select-none animate-fade-in">
+    <div className="flex-1 flex flex-col gitofy-scroll select-none animate-fade-in">
       {/* Top Bar */}
       <div
         className="sticky top-0 z-30 px-4 py-3 backdrop-blur-md border-b flex items-center justify-between"
@@ -386,18 +391,31 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
             </svg>
           </M3IconButton>
 
-          <M3IconButton
-            aria-label="Delete repo"
-            onClick={() => {
-              triggerHaptic('heavy');
-              onDeleteRepo();
-            }}
-          >
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke={colors.error} strokeWidth="2.5">
-              <polyline points="3 6 5 6 21 6" />
-              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
-            </svg>
-          </M3IconButton>
+          <div className="relative">
+            <M3IconButton
+              aria-label="More repository actions"
+              onClick={() => { triggerHaptic('tick'); setShowMoreMenu((v) => !v); }}
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
+                <circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/>
+              </svg>
+            </M3IconButton>
+            {showMoreMenu && (
+              <div
+                className="absolute right-0 top-12 z-50 min-w-[190px] rounded-2xl border p-1.5 shadow-2xl animate-scale-in"
+                style={{ backgroundColor: colors.surfaceContainerHigh, borderColor: colors.outlineVariant }}
+              >
+                <button type="button" className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-left text-sm font-semibold hover:bg-white/5 active:scale-[0.98] transition-all" onClick={() => { setShowMoreMenu(false); onShareRepo(); }}>
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>
+                  Share
+                </button>
+                <button type="button" className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-left text-sm font-semibold hover:bg-white/5 active:scale-[0.98] transition-all" style={{ color: colors.error }} onClick={() => { setShowMoreMenu(false); onDeleteContents(); }}>
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg>
+                  Delete content
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -576,7 +594,7 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
                   }
                   onClick={onUpdateWithZip}
                 >
-                  Update via ZIP
+                  {repo.size === 0 ? 'Upload Project' : 'Update via ZIP'}
                 </M3Button>
 
                 <M3Button

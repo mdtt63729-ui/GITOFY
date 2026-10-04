@@ -60,7 +60,7 @@ export const MotionLabScreen: React.FC<MotionLabScreenProps> = ({ onBack }) => {
 
   return (
     <div
-      className="flex-1 flex flex-col overflow-y-auto overscroll-contain select-none"
+      className="flex-1 flex flex-col gitofy-scroll select-none"
       style={{ backgroundColor: colors.surface, color: colors.onSurface }}
     >
       {/* Top Bar */}

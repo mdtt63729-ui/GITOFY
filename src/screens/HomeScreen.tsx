@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { useTheme } from '../ui/ThemeContext';
 import { Repository } from '../types';
 import { M3Button } from '../ui/m3/M3Button';
@@ -12,6 +12,7 @@ export interface HomeScreenProps {
   isLoading: boolean;
   onRefresh: () => void;
   onSelectRepo: (repo: Repository) => void;
+  onLongPressRepo: (repo: Repository) => void;
   onCreateRepo: () => void;
   onDeleteRepos: (repoIds: number[]) => void;
   onOpenSettings: () => void;
@@ -27,6 +28,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   isLoading,
   onRefresh,
   onSelectRepo,
+  onLongPressRepo,
   onCreateRepo,
   onDeleteRepos,
   onOpenSettings,
@@ -40,14 +42,24 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const [filter, setFilter] = useState<'all' | 'private' | 'public' | 'pinned'>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [lastScrollTop, setLastScrollTop] = useState(0);
+  const lastScrollTopRef = useRef(0);
+  const scrollFrameRef = useRef<number | null>(null);
+  const pendingScrollRef = useRef<{ top: number; delta: number } | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressTriggeredRef = useRef(false);
 
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const currentTop = e.currentTarget.scrollTop;
-    const delta = currentTop - lastScrollTop;
-    setLastScrollTop(currentTop);
-    onScrollDelta(currentTop, delta);
-  };
+    const delta = currentTop - lastScrollTopRef.current;
+    lastScrollTopRef.current = currentTop;
+    pendingScrollRef.current = { top: currentTop, delta };
+    if (scrollFrameRef.current !== null) return;
+    scrollFrameRef.current = requestAnimationFrame(() => {
+      scrollFrameRef.current = null;
+      const pending = pendingScrollRef.current;
+      if (pending) onScrollDelta(pending.top, pending.delta);
+    });
+  }, [onScrollDelta]);
 
   const filteredRepos = repos.filter((r) => {
     if (filter === 'private' && !r.private) return false;
@@ -102,7 +114,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   return (
     <div
       onScroll={handleScroll}
-      className="relative flex-1 flex flex-col overflow-y-auto overscroll-contain select-none"
+      className="relative flex-1 flex flex-col gitofy-scroll select-none"
     >
       {/* Top App Bar */}
       <div
@@ -148,10 +160,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             <div className="flex items-center justify-between">
               <div>
                 <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
-                  <span style={{ color: colors.primary }}>Gitofy</span>
-                  <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold" style={{ backgroundColor: colors.secondaryContainer, color: colors.onSecondaryContainer }}>
-                    M3
-                  </span>
+                  <span className="gitofy-wordmark" style={{ color: colors.primary }}>Gitofy</span>
                 </h1>
                 <p className="text-xs font-medium" style={{ color: colors.onSurfaceVariant }}>
                   {settings.githubUsername ? `@${settings.githubUsername}` : 'GitHub'} · {repos.length} repositories
@@ -412,10 +421,36 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 <div
                   key={repo.id}
                   onClick={() => {
+                    if (longPressTriggeredRef.current) {
+                      longPressTriggeredRef.current = false;
+                      return;
+                    }
                     if (isDeleteMode) {
                       toggleSelectRepo(repo.id);
                     } else {
                       onSelectRepo(repo);
+                    }
+                  }}
+                  onPointerDown={() => {
+                    if (isDeleteMode) return;
+                    longPressTriggeredRef.current = false;
+                    if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current);
+                    longPressTimerRef.current = window.setTimeout(() => {
+                      longPressTriggeredRef.current = true;
+                      triggerHaptic('heavy');
+                      onLongPressRepo(repo);
+                    }, 2000);
+                  }}
+                  onPointerUp={() => {
+                    if (longPressTimerRef.current !== null) {
+                      window.clearTimeout(longPressTimerRef.current);
+                      longPressTimerRef.current = null;
+                    }
+                  }}
+                  onPointerCancel={() => {
+                    if (longPressTimerRef.current !== null) {
+                      window.clearTimeout(longPressTimerRef.current);
+                      longPressTimerRef.current = null;
                     }
                   }}
                   className={`group relative p-4 rounded-2xl border transition-all duration-150 cursor-pointer select-none active:scale-[0.98] ${

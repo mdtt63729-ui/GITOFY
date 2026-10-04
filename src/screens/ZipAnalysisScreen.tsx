@@ -34,7 +34,7 @@ export const ZipAnalysisScreen: React.FC<ZipAnalysisScreenProps> = ({
   });
 
   return (
-    <div className="flex-1 flex flex-col overflow-y-auto overscroll-contain select-none">
+    <div className="flex-1 flex flex-col gitofy-scroll select-none">
       {/* Top Bar */}
       <div
         className="sticky top-0 z-30 px-4 py-3 backdrop-blur-md border-b flex items-center justify-between"
