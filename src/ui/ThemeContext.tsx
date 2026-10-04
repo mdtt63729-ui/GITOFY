@@ -109,7 +109,7 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     root.style.setProperty('--md-sys-color-background', colors.background);
     root.style.setProperty('--gitofy-nxt-primary-gradient', 'linear-gradient(135deg, #7E49E8 0%, #A15CE1 52%, #D45FAE 100%)');
     root.style.setProperty('--gitofy-nxt-surface-gradient', 'linear-gradient(145deg, #FFFFFF 0%, #F5F6FF 58%, #ECEBFA 100%)');
-    root.style.setProperty('--gitofy-nxt-background-gradient', 'linear-gradient(145deg, #E8E7F7 0%, #F1F2FC 48%, #E5E4F5 100%)');
+    root.style.setProperty('--gitofy-nxt-background-gradient', 'linear-gradient(135deg, #D8C4F0 0%, #F3ECFF 45%, #FFFFFF 100%)');
 
     document.body.style.backgroundColor = colors.background;
     document.body.style.color = colors.onBackground;

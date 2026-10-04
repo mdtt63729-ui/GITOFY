@@ -11,7 +11,7 @@
     </style>
 
     <style name="Theme.Gitofy.Splash" parent="Theme.Gitofy">
-        <item name="android:windowBackground">@color/white</item>
+        <item name="android:windowBackground">@android:color/black</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar">false</item>

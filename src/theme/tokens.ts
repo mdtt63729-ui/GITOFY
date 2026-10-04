@@ -55,14 +55,14 @@ export interface M3ColorScheme {
 
 /** NXT UI — reference-inspired light palette (lavender / ice / violet / pink). */
 export const nxtTheme: M3ColorScheme = {
-  primary: '#8B4DE2',
+  primary: '#8A4BFF',
   onPrimary: '#FFFFFF',
-  primaryContainer: '#E9D8FF',
-  onPrimaryContainer: '#2C0A4A',
-  secondary: '#6554B4',
+  primaryContainer: '#EADDFF',
+  onPrimaryContainer: '#21005D',
+  secondary: '#6B4EE6',
   onSecondary: '#FFFFFF',
-  secondaryContainer: '#E6DEFF',
-  onSecondaryContainer: '#21164A',
+  secondaryContainer: '#E7E0FF',
+  onSecondaryContainer: '#1E1148',
   tertiary: '#C95B9D',
   onTertiary: '#FFFFFF',
   tertiaryContainer: '#FFD9EC',
@@ -71,19 +71,19 @@ export const nxtTheme: M3ColorScheme = {
   onError: '#FFFFFF',
   errorContainer: '#FFDAD9',
   onErrorContainer: '#410006',
-  background: '#EEEFFC',
-  onBackground: '#171827',
-  surface: '#F8F9FF',
-  onSurface: '#171827',
-  surfaceVariant: '#E8E9F6',
-  onSurfaceVariant: '#5D6070',
+  background: '#F8F7FF',
+  onBackground: '#4A4A4A',
+  surface: '#FFFFFF',
+  onSurface: '#4A4A4A',
+  surfaceVariant: '#F1EEFB',
+  onSurfaceVariant: '#A0A0A0',
   surfaceContainerLowest: '#FFFFFF',
-  surfaceContainerLow: '#F5F6FD',
-  surfaceContainer: '#EEF0F9',
-  surfaceContainerHigh: '#E9EAF5',
-  surfaceContainerHighest: '#E1E3F0',
-  outline: '#8C8E9D',
-  outlineVariant: '#D7D8E5',
+  surfaceContainerLow: '#F8F7FF',
+  surfaceContainer: '#F3F1FB',
+  surfaceContainerHigh: '#EDEAF8',
+  surfaceContainerHighest: '#E6E1F5',
+  outline: '#C9C2DD',
+  outlineVariant: '#E5E0F2',
   inverseSurface: '#2E2F3B',
   inverseOnSurface: '#F2F2FA',
   inversePrimary: '#D5B8FF',
@@ -745,6 +745,8 @@ export interface GitofySettings {
   
   // Auth
   personalAccessToken: string;
+  /** Optional override for the GitHub OAuth client id (no Google OAuth involved). */
+  githubClientId: string;
   githubUsername: string;
   avatarUrl: string;
   isDemoMode: boolean;
@@ -792,6 +794,7 @@ export const defaultSettings: GitofySettings = {
   instantMode: false,
 
   personalAccessToken: '',
+  githubClientId: '',
   githubUsername: '',
   avatarUrl: '',
   isDemoMode: false,

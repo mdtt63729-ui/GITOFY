@@ -110,11 +110,11 @@ const en: Dict = {
   'diag.no': 'No',
 
   'login.or': 'or',
-  'login.google': 'Log in with Google',
+  'login.google': 'Sign in with OTP',
   'login.patShort': 'Login with PAT',
   'chooser.title': 'Choose an account',
   'chooser.subtitle': 'to continue to Gitufy',
-  'chooser.useAnother': 'Use another account',
+  'chooser.useAnother': 'Log in to your account',
   'chooser.hint': 'Accounts you have signed in with on this device.',
 
   'sec.unofficial.badge': 'Security risk detected',
@@ -235,11 +235,11 @@ const bn: Dict = {
   'diag.no': 'না',
 
   'login.or': 'অথবা',
-  'login.google': 'Google দিয়ে লগইন',
+  'login.google': 'OTP দিয়ে সাইন ইন',
   'login.patShort': 'PAT দিয়ে লগইন',
   'chooser.title': 'একটি অ্যাকাউন্ট বেছে নিন',
   'chooser.subtitle': 'Gitufy-তে চালিয়ে যেতে',
-  'chooser.useAnother': 'অন্য অ্যাকাউন্ট ব্যবহার করুন',
+  'chooser.useAnother': 'আপনার অ্যাকাউন্টে লগ ইন করুন',
   'chooser.hint': 'এই ডিভাইসে আগে যেসব অ্যাকাউন্টে লগইন করেছেন।',
 
   'sec.unofficial.badge': 'নিরাপত্তা ঝুঁকি শনাক্ত হয়েছে',

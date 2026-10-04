@@ -1,5 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme } from '../ui/ThemeContext';
+import { openExternal } from '../utils/external';
 import { authRepository, type ProfileResult } from './authRepository';
 import { sessionManager, type SessionState } from './sessionManager';
 import { tokenRepository } from './tokenRepository';
@@ -303,7 +304,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       b.openCustomTab(uri);
       return;
     }
-    window.open(uri, '_blank', 'noopener');
+    openExternal(uri);
   }, []);
 
   const copyText = useCallback(async (text: string, sensitive = false) => {

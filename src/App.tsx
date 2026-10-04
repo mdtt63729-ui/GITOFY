@@ -40,6 +40,7 @@ import { M3GalleryScreen } from './screens/M3GalleryScreen';
 import { MotionLabScreen } from './screens/MotionLabScreen';
 import { RepoActionResultScreen, RepoActionKind } from './screens/RepoActionResultScreen';
 import { SplashScreen } from './screens/SplashScreen';
+import { OnboardingScreen } from './screens/OnboardingScreen';
 import { PageTransition } from './ui/transitions/PageTransition';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import { AuthConfig, isGitHubApp } from './auth/config';
@@ -62,11 +63,28 @@ function GitofyApp() {
     logoutActive,
     logoutAll,
   } = useAuth();
-  const [showSplash, setShowSplash] = useState(true);
+  // Splash phases: visible -> exiting (fade) -> done. The app renders underneath
+  // so the splash can fade out smoothly into it with no white flash.
+  const [splashPhase, setSplashPhase] = useState<'visible' | 'exiting' | 'done'>('visible');
 
   useEffect(() => {
-    const timer = window.setTimeout(() => setShowSplash(false), 1150);
+    const timer = window.setTimeout(() => setSplashPhase('exiting'), 360);
     return () => window.clearTimeout(timer);
+  }, []);
+
+  useEffect(() => {
+    if (splashPhase !== 'exiting' || !ready) return;
+    const timer = window.setTimeout(() => setSplashPhase('done'), 420);
+    return () => window.clearTimeout(timer);
+  }, [splashPhase, ready]);
+
+  // First-run onboarding: shown until the user actually finishes or skips it.
+  const [onboardingDone, setOnboardingDone] = useState<boolean>(() => {
+    try { return window.localStorage.getItem('gitofy.onboarded') === '1'; } catch { return false; }
+  });
+  const completeOnboarding = useCallback(() => {
+    try { window.localStorage.setItem('gitofy.onboarded', '1'); } catch { /* ignore */ }
+    setOnboardingDone(true);
   }, []);
 
   // Navigation State
@@ -479,10 +497,19 @@ function GitofyApp() {
   const activeRepoForDelete =
     repos.find((r) => selectedRepoIds[0] === r.id) || selectedRepo || repos[0] || { name: 'repository' };
 
-  if (showSplash || !ready) {
+  if (splashPhase !== 'done' || !ready) {
     return (
       <AndroidFrame>
-        <SplashScreen />
+        <SplashScreen exiting={splashPhase === 'exiting'} />
+      </AndroidFrame>
+    );
+  }
+
+  // First run: show the onboarding carousel before anything else.
+  if (!onboardingDone) {
+    return (
+      <AndroidFrame>
+        <OnboardingScreen onComplete={completeOnboarding} />
       </AndroidFrame>
     );
   }
@@ -848,7 +875,10 @@ function GitofyApp() {
       {/* Scroll-Reactive FAB Menu (§৫.৯ & §৭) */}
       {currentScreen === 'home' && !isDeleteMode && (
         <FabMenu
-          visible={isFabVisible || repos.length <= 2}
+          // Keep the quick-action FAB always available on the home screen. It used
+          // to be hidden until you scrolled down, so at the top of the list it was
+          // off-screen and tapping it did nothing.
+          visible={true}
           onCreateRepo={() => setIsCreateSheetOpen(true)}
           onDeleteRepo={() => {
             triggerHaptic('heavy');

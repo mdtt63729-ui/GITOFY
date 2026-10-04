@@ -92,6 +92,7 @@ export const M3Button: React.FC<M3ButtonProps> = ({
   return (
     <button
       {...rest}
+      data-variant={variant}
       disabled={disabled || loading}
       onClick={handleClick}
       onMouseDown={() => setIsPressed(true)}

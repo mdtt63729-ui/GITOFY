@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTheme } from '../ui/ThemeContext';
 import { Repository, DiffSummary, UploadState } from '../types';
 import { processZipFile, computeSmartDiff, ExtractedFile } from '../git/diffEngine';
@@ -80,6 +80,17 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
   // Throttled speed & ETA updates
   const lastSpeedUpdateRef = useRef(0);
 
+  // Map the live analysis status to a step in the pipeline (for the stepper).
+  const calcSteps = ['Reading archive', 'Extracting files', 'Indexing & hashing', 'Comparing with GitHub', 'Ready'];
+  const calcStepIndex = useMemo(() => {
+    const s = calculatingStatus.toLowerCase();
+    if (s.includes('complete') || s.includes('done')) return 4;
+    if (s.includes('analy') || s.includes('diff') || s.includes('remote') || s.includes('compar')) return 3;
+    if (s.includes('hash') || s.includes('index')) return 2;
+    if (s.includes('extract')) return 1;
+    return 0;
+  }, [calculatingStatus]);
+
   // -------------------------------------------------------------
   // STAGE 1: ASYNCHRONOUS CALCULATING & SMART DIFF
   // -------------------------------------------------------------
@@ -92,9 +103,11 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
         await new Promise((r) => setTimeout(r, 60));
 
         // Non-blocking extraction
+        setCalculatingStatus('Extracting files...');
         const local = await processZipFile(zipFile, settings.stripRootFolder);
         if (isCancelled) return;
 
+        setCalculatingStatus('Indexing and hashing files...');
         setExtractedFiles(local);
         const totalSize = local.reduce((sum, f) => sum + f.size, 0);
 
@@ -263,9 +276,9 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
       {/* STAGE 1: CALCULATING SCREEN                               */}
       {/* --------------------------------------------------------- */}
       {stage === 'calculating' && (
-        <div className="flex-1 flex flex-col items-center justify-between py-6 animate-page-enter">
-          {/* Top Title */}
-          <div className="text-center flex flex-col items-center gap-1.5 pt-4">
+        <div className="flex-1 flex flex-col justify-between py-6">
+          {/* Title */}
+          <div className="calc-in text-center flex flex-col items-center gap-1.5 pt-4" style={{ animationDelay: '0ms' }}>
             <span className="text-xs font-mono font-medium" style={{ color: colors.primary }}>
               {repo.full_name || repo.name}
             </span>
@@ -277,51 +290,104 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
             </p>
           </div>
 
-          {/* Hero M3 Circular Progress Indicator */}
-          <div className="flex flex-col items-center gap-5 my-auto">
-            <div className="relative flex items-center justify-center p-3">
+          {/* Hero: pulsing M3 progress ring */}
+          <div className="flex flex-col items-center gap-6 my-auto w-full">
+            <div className="calc-in relative flex items-center justify-center" style={{ animationDelay: '70ms' }}>
+              <span className="calc-halo" style={{ backgroundColor: colors.primaryContainer }} />
+              <span className="calc-halo calc-halo-2" style={{ backgroundColor: colors.primaryContainer }} />
               <M3CircularProgress
-                size={84}
-                strokeWidth={6}
+                size={104}
+                strokeWidth={7}
                 color={colors.primary}
                 trackColor={colors.surfaceContainerHighest}
               />
-            </div>
-
-            <div className="flex flex-col items-center text-center gap-1">
-              <p
-                className="text-xs font-mono font-medium px-3 py-1 rounded-full border transition-colors"
-                style={{
-                  backgroundColor: colors.surfaceContainerLow,
-                  borderColor: colors.outlineVariant,
-                  color: colors.onSurface,
-                }}
+              <span
+                className="absolute w-14 h-14 rounded-2xl flex items-center justify-center"
+                style={{ backgroundColor: colors.surfaceContainerLow, color: colors.primary }}
               >
-                {calculatingStatus}
-              </p>
+                <svg className="w-7 h-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                  <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
+                  <line x1="12" y1="22.08" x2="12" y2="12" />
+                </svg>
+              </span>
             </div>
 
-            {/* Real-time Statistics Cards */}
-            <div className="w-full max-w-xs grid grid-cols-2 gap-2.5 mt-2">
+            {/* Live status pill */}
+            <p
+              className="calc-in text-xs font-mono font-medium px-3.5 py-1.5 rounded-full border"
+              style={{
+                backgroundColor: colors.surfaceContainerLow,
+                borderColor: colors.outlineVariant,
+                color: colors.onSurface,
+                animationDelay: '140ms',
+              }}
+            >
+              {calculatingStatus}
+            </p>
+
+            {/* Pipeline stepper */}
+            <div
+              className="calc-in w-full max-w-xs flex flex-col gap-1"
+              style={{ animationDelay: '210ms' }}
+            >
+              {calcSteps.map((label, i) => {
+                const done = i < calcStepIndex;
+                const active = i === calcStepIndex;
+                const tint = done || active ? colors.primary : colors.outlineVariant;
+                return (
+                  <div key={label} className="flex items-center gap-2.5 px-1 py-1">
+                    <span
+                      className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 ${active ? 'calc-step-active' : ''}`}
+                      style={{
+                        backgroundColor: done ? colors.primary : active ? `${colors.primary}22` : 'transparent',
+                        border: `1.5px solid ${tint}`,
+                        color: done ? colors.onPrimary : colors.primary,
+                        transition: 'background-color 300ms ease, border-color 300ms ease',
+                      }}
+                    >
+                      {done ? (
+                        <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      ) : active ? (
+                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: colors.primary }} />
+                      ) : null}
+                    </span>
+                    <span
+                      className="text-[11px] font-semibold"
+                      style={{
+                        color: active ? colors.onSurface : colors.onSurfaceVariant,
+                        opacity: done || active ? 1 : 0.55,
+                        transition: 'color 300ms ease, opacity 300ms ease',
+                      }}
+                    >
+                      {label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Indeterminate progress bar */}
+            <div className="calc-in w-full max-w-xs" style={{ animationDelay: '260ms' }}>
+              <M3LinearProgress />
+            </div>
+
+            {/* Stat cards */}
+            <div className="calc-in w-full max-w-xs grid grid-cols-2 gap-2.5" style={{ animationDelay: '320ms' }}>
               <div
-                className="p-3 rounded-2xl border flex flex-col items-center justify-center text-center transition-all"
-                style={{
-                  backgroundColor: colors.surfaceContainerLowest,
-                  borderColor: colors.outlineVariant,
-                }}
+                className="p-3 rounded-2xl border flex flex-col items-center justify-center text-center"
+                style={{ backgroundColor: colors.surfaceContainerLowest, borderColor: colors.outlineVariant }}
               >
                 <span className="text-xl font-black font-mono" style={{ color: colors.primary }}>
                   {displayFilesCount}
                 </span>
                 <span className="text-[11px] font-medium opacity-70">Files detected</span>
               </div>
-
               <div
-                className="p-3 rounded-2xl border flex flex-col items-center justify-center text-center transition-all"
-                style={{
-                  backgroundColor: colors.surfaceContainerLowest,
-                  borderColor: colors.outlineVariant,
-                }}
+                className="p-3 rounded-2xl border flex flex-col items-center justify-center text-center"
+                style={{ backgroundColor: colors.surfaceContainerLowest, borderColor: colors.outlineVariant }}
               >
                 <span className="text-xl font-black font-mono" style={{ color: colors.primary }}>
                   {displaySizeMb} MB
@@ -332,7 +398,7 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
           </div>
 
           {/* Bottom Cancel */}
-          <div className="w-full max-w-xs">
+          <div className="calc-in w-full max-w-xs mx-auto" style={{ animationDelay: '380ms' }}>
             <M3Button variant="tonal" shape="capsule" size="medium" className="w-full" onClick={onCancel}>
               Cancel
             </M3Button>

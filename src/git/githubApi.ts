@@ -1198,8 +1198,35 @@ async function extractZipText(buffer: ArrayBuffer): Promise<string> {
   return files.join('\n\n');
 }
 
+interface NativeTextBridge {
+  githubGetText?: (url: string, token: string) => string;
+}
+
 export async function fetchJobLogs(owner: string, repo: string, jobId: number, token: string): Promise<string> {
-  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/jobs/${jobId}/logs`, { headers: githubHeaders(token) });
+  const url = `https://api.github.com/repos/${owner}/${repo}/actions/jobs/${jobId}/logs`;
+
+  // Prefer the native bridge: the REST endpoint 302-redirects to a storage host
+  // that does not send CORS headers, so a browser fetch from inside the WebView is
+  // blocked by CORS and the logs never load. The native GET follows the redirect
+  // without CORS. Falls back to fetch when the bridge is unavailable (browser/dev).
+  const bridge = typeof window !== 'undefined'
+    ? (window as unknown as { GitofyAndroid?: NativeTextBridge }).GitofyAndroid
+    : undefined;
+  if (bridge?.githubGetText) {
+    let parsed: { status: number; body: string } | null = null;
+    try {
+      parsed = JSON.parse(bridge.githubGetText(url, token)) as { status: number; body: string };
+    } catch {
+      parsed = null;
+    }
+    if (parsed) {
+      if (parsed.status >= 200 && parsed.status < 300) return parsed.body;
+      if (parsed.status === 404) return ''; // logs not available yet
+      if (parsed.status >= 400) throw new Error(`Could not load job logs (${parsed.status}).`);
+    }
+  }
+
+  const res = await fetch(url, { headers: githubHeaders(token) });
   if (!res.ok) throw new Error(`Could not load job logs (${res.status}).`);
   const type = res.headers.get('content-type') || '';
   if (type.includes('text/plain') || type.includes('text/html')) return await res.text();

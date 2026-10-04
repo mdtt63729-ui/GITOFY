@@ -117,6 +117,15 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
     }
   };
 
+  // Open the full run detail (jobs + steps + logs) for a run tapped in the list.
+  // Previously the run cards had no click handler, so tapping a completed /
+  // running / failed run did nothing and its steps could not be seen.
+  const openRunDetail = (run: WorkflowRun) => {
+    triggerHaptic('tick');
+    setDetailRun(run);
+    setDetailWorkflow(selectedWorkflow || workflows[0] || null);
+  };
+
   if (detailWorkflow) {
     return (
       <WorkflowRunDetailScreen
@@ -493,7 +502,10 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
                   return (
                     <div
                       key={run.id}
-                      className="p-3.5 rounded-2xl border flex flex-col gap-2.5 transition-all"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => openRunDetail(run)}
+                      className="p-3.5 rounded-2xl border flex flex-col gap-2.5 transition-all cursor-pointer active:scale-[0.99]"
                       style={{
                         backgroundColor: colors.surfaceContainerLowest,
                         borderColor: isInProgress
@@ -577,6 +589,7 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
                           href={run.html_url}
                           target="_blank"
                           rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
                           className="font-bold underline hover:opacity-100"
                           style={{ color: colors.primary }}
                         >

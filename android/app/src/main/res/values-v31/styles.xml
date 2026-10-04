@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <style name="Theme.Gitofy.Splash" parent="Theme.Gitofy">
-        <item name="android:windowSplashScreenBackground">#17102F</item>
+        <item name="android:windowSplashScreenBackground">#000000</item>
         <item name="android:windowSplashScreenAnimatedIcon">@drawable/gitofy_icon</item>
-        <item name="android:windowSplashScreenIconBackgroundColor">#17102F</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#000000</item>
         <item name="android:windowLightStatusBar">false</item>
         <item name="android:windowLightNavigationBar">false</item>
         <item name="android:windowActionModeOverlay">true</item>

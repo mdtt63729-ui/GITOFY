@@ -57,6 +57,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoggedIn, onOpenPriv
   const [patToken, setPatToken] = useState('');
   const [patBusy, setPatBusy] = useState(false);
   const [patError, setPatError] = useState<AuthError | null>(null);
+  const [googleAccounts, setGoogleAccounts] = useState<Array<{ name: string; label: string }>>([]);
   const navigatedRef = useRef(false);
 
   const reduceMotion = settings.reduceMotion;
@@ -131,13 +132,43 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoggedIn, onOpenPriv
     async (id: number) => {
       setChooserOpen(false);
       triggerHaptic('success');
-      await switchAccount(id);
+      try {
+        await switchAccount(id);
+      } catch {
+        // The stored session could not be restored — fall back to a fresh
+        // GitHub login instead of silently doing nothing.
+        triggerHaptic('error');
+        void startDeviceLogin();
+      }
     },
-    [switchAccount, triggerHaptic]
+    [switchAccount, startDeviceLogin, triggerHaptic]
   );
 
   const handleUseAnother = useCallback(() => {
     setChooserOpen(false);
+    void startDeviceLogin();
+  }, [startDeviceLogin]);
+
+  // Load the Google accounts on this device so the "Choose an account" chooser
+  // can list them, exactly like Google's own account picker.
+  useEffect(() => {
+    const bridge = (window as unknown as {
+      GitofyAndroid?: { getGoogleAccounts?: () => string };
+    }).GitofyAndroid;
+    if (!bridge?.getGoogleAccounts) return;
+    try {
+      const parsed = JSON.parse(bridge.getGoogleAccounts()) as Array<{ name: string; label: string }>;
+      if (Array.isArray(parsed)) setGoogleAccounts(parsed.filter((a) => !!a?.name));
+    } catch {
+      // No accounts / permission not granted — the chooser still works.
+    }
+  }, []);
+
+  const handlePickGoogle = useCallback(() => {
+    setChooserOpen(false);
+    // A Google account cannot itself authorise GitHub from a third-party app, so
+    // continue into the GitHub sign-in (which opens in the browser, where GitHub
+    // offers its own "Sign in with Google").
     void startDeviceLogin();
   }, [startDeviceLogin]);
 
@@ -314,6 +345,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoggedIn, onOpenPriv
             disabled={!clientConfigured}
             onClick={() => {
               triggerHaptic('click');
+              // With no previously signed-in account the chooser would only show
+              // "Use another account", so start the GitHub login straight away.
+              if (accounts.length === 0 && googleAccounts.length === 0) {
+                void startDeviceLogin();
+                return;
+              }
               setChooserOpen(true);
             }}
           >
@@ -324,7 +361,6 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoggedIn, onOpenPriv
               </span>
             ) : (
               <span className="inline-flex items-center gap-2">
-                <GoogleMark className="w-5 h-5" />
                 {t('login.google')}
               </span>
             )}
@@ -374,7 +410,9 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoggedIn, onOpenPriv
         isOpen={chooserOpen}
         onClose={() => setChooserOpen(false)}
         accounts={accounts}
+        googleAccounts={googleAccounts}
         onPick={(a) => { void handlePickAccount(a.id); }}
+        onPickGoogle={handlePickGoogle}
         onUseAnother={handleUseAnother}
       />
     </div>

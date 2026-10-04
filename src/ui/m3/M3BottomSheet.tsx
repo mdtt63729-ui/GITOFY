@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTheme } from '../ThemeContext';
 
 export interface M3BottomSheetProps {
@@ -30,7 +30,26 @@ export const M3BottomSheet: React.FC<M3BottomSheetProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  if (!isOpen) return null;
+  // Keep the sheet mounted while it slides out, so open AND close are smooth.
+  const [render, setRender] = useState(isOpen);
+  const [closing, setClosing] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setRender(true);
+      setClosing(false);
+      return;
+    }
+    if (!render) return;
+    setClosing(true);
+    const t = window.setTimeout(() => {
+      setRender(false);
+      setClosing(false);
+    }, 230);
+    return () => window.clearTimeout(t);
+  }, [isOpen, render]);
+
+  if (!render) return null;
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col justify-end">
@@ -40,14 +59,14 @@ export const M3BottomSheet: React.FC<M3BottomSheetProps> = ({
           if (settings.haptics) triggerHaptic('tick');
           onClose();
         }}
-        className="absolute inset-0 bg-black/50 backdrop-blur-xs transition-opacity animate-fade-in"
+        className={`absolute inset-0 bg-black/50 backdrop-blur-xs ${closing ? 'scrim-out' : 'scrim-in'}`}
       />
 
       {/* Sheet Modal */}
       <div
         role="dialog"
         aria-modal="true"
-        className="relative w-full rounded-t-[28px] shadow-2xl flex flex-col overflow-hidden animate-slide-up"
+        className={`relative w-full rounded-t-[28px] shadow-2xl flex flex-col overflow-hidden ${closing ? 'sheet-out' : 'animate-slide-up'}`}
         style={{
           backgroundColor: colors.surfaceContainerLow,
           color: colors.onSurface,

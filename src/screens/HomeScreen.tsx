@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { useTheme } from '../ui/ThemeContext';
 import { Repository } from '../types';
 import { M3Button } from '../ui/m3/M3Button';
@@ -42,6 +42,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 }) => {
   const { colors, settings, triggerHaptic } = useTheme();
   const [filter, setFilter] = useState<'all' | 'private' | 'public' | 'pinned'>('all');
+  // Animated sliding indicator behind the Public/Private/Pinned filter chips.
+  const filterKeys = ['all', 'private', 'public', 'pinned'] as const;
+  const filterChipRefs = useRef<Array<HTMLSpanElement | null>>([]);
+  const [chipIndicator, setChipIndicator] = useState<{ left: number; width: number }>({ left: 0, width: 0 });
+  const [headerCompact, setHeaderCompact] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement | null>(null);
+  const revealObserverRef = useRef<IntersectionObserver | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const lastScrollTopRef = useRef(0);
@@ -49,6 +56,62 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const pendingScrollRef = useRef<{ top: number; delta: number } | null>(null);
   const longPressTimerRef = useRef<number | null>(null);
   const longPressTriggeredRef = useRef(false);
+
+  // Keep the filter-chip indicator aligned with the selected chip, and re-measure
+  // when the layout or the chip labels/counts change.
+  const measureChipIndicator = useCallback(() => {
+    const idx = filterKeys.indexOf(filter);
+    const el = filterChipRefs.current[idx];
+    if (el) setChipIndicator({ left: el.offsetLeft, width: el.offsetWidth });
+  }, [filter]);
+
+  useEffect(() => {
+    const raf = requestAnimationFrame(measureChipIndicator);
+    window.addEventListener('resize', measureChipIndicator);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', measureChipIndicator);
+    };
+  }, [measureChipIndicator, repos.length]);
+
+  // Reveal each repository box as it scrolls into view (scroll animation).
+  useEffect(() => {
+    const root = scrollContainerRef.current;
+    const revealAll = () => {
+      root?.querySelectorAll('.repo-card').forEach((el) => el.classList.add('repo-card-revealed'));
+    };
+    if (!root || typeof IntersectionObserver === 'undefined') {
+      revealAll();
+      return;
+    }
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            entry.target.classList.add('repo-card-revealed');
+            observer.unobserve(entry.target);
+          }
+        });
+      },
+      { root, rootMargin: '0px 0px -28px 0px', threshold: 0.05 }
+    );
+    revealObserverRef.current = observer;
+    root.querySelectorAll('.repo-card').forEach((el) => observer.observe(el));
+    // Safety: if the observer never fires (unexpected WebView quirk) reveal every
+    // card so the list can never be left blank / untappable.
+    const safety = window.setTimeout(() => {
+      if (!root.querySelector('.repo-card-revealed')) revealAll();
+    }, 1500);
+    return () => {
+      observer.disconnect();
+      revealObserverRef.current = null;
+      window.clearTimeout(safety);
+    };
+  }, [filter]);
+
+  const observeCard = useCallback((el: HTMLDivElement | null) => {
+    if (el) revealObserverRef.current?.observe(el);
+  }, []);
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const currentTop = e.currentTarget.scrollTop;
@@ -59,7 +122,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     scrollFrameRef.current = requestAnimationFrame(() => {
       scrollFrameRef.current = null;
       const pending = pendingScrollRef.current;
-      if (pending) onScrollDelta(pending.top, pending.delta);
+      if (pending) {
+        onScrollDelta(pending.top, pending.delta);
+        // Collapse the large app bar while scrolling down (scroll animation).
+        setHeaderCompact(pending.top > 24);
+      }
     });
   }, [onScrollDelta]);
 
@@ -115,12 +182,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
 
   return (
     <div
+      ref={scrollContainerRef}
       onScroll={handleScroll}
       className="relative flex-1 flex flex-col gitofy-scroll select-none"
     >
       {/* Top App Bar */}
       <div
-        className="sticky top-0 z-30 px-5 pt-3 pb-2 backdrop-blur-md border-b transition-colors duration-150"
+        className={`gitofy-appbar sticky top-0 z-30 px-5 backdrop-blur-md border-b ${headerCompact ? 'gitofy-appbar-compact' : ''}`}
         style={{
           backgroundColor: `${colors.surface}f5`,
           borderColor: colors.outlineVariant,
@@ -164,7 +232,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 <h1 className="text-2xl font-black tracking-tight flex items-center gap-2">
                   <span className="gitofy-wordmark" style={{ color: colors.primary }}>Gitofy</span>
                 </h1>
-                <p className="text-xs font-medium" style={{ color: colors.onSurfaceVariant }}>
+                <p className="gitofy-appbar-subtitle text-xs font-medium" style={{ color: colors.onSurfaceVariant }}>
                   {settings.githubUsername ? `@${settings.githubUsername}` : 'GitHub'} · {repos.length} repositories
                 </p>
               </div>
@@ -356,33 +424,54 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </div>
         )}
 
-        {/* Filter Chips */}
+        {/* Filter Chips — with an animated sliding indicator */}
         {!isDeleteMode && (
-          <div className="flex items-center gap-2 overflow-x-auto py-1 scrollbar-none">
-            <M3Chip
-              label="All"
-              selected={filter === 'all'}
-              onClick={() => setFilter('all')}
-              count={repos.length}
+          <div className="relative flex items-center gap-2 overflow-x-auto py-1 scrollbar-none">
+            <span
+              aria-hidden="true"
+              className="filter-chip-indicator"
+              style={{
+                transform: `translateX(${chipIndicator.left}px)`,
+                width: chipIndicator.width,
+                backgroundColor: colors.secondaryContainer,
+              }}
             />
-            <M3Chip
-              label="Private"
-              selected={filter === 'private'}
-              onClick={() => setFilter('private')}
-              count={repos.filter((r) => r.private).length}
-            />
-            <M3Chip
-              label="Public"
-              selected={filter === 'public'}
-              onClick={() => setFilter('public')}
-              count={repos.filter((r) => !r.private).length}
-            />
-            <M3Chip
-              label="Pinned"
-              selected={filter === 'pinned'}
-              onClick={() => setFilter('pinned')}
-              count={repos.filter((r) => r.pinned).length}
-            />
+            <span ref={(el) => { filterChipRefs.current[0] = el; }} className="relative z-[1] inline-flex">
+              <M3Chip
+                label="All"
+                selected={filter === 'all'}
+                showSelectedBackground={false}
+                onClick={() => setFilter('all')}
+                count={repos.length}
+              />
+            </span>
+            <span ref={(el) => { filterChipRefs.current[1] = el; }} className="relative z-[1] inline-flex">
+              <M3Chip
+                label="Private"
+                selected={filter === 'private'}
+                showSelectedBackground={false}
+                onClick={() => setFilter('private')}
+                count={repos.filter((r) => r.private).length}
+              />
+            </span>
+            <span ref={(el) => { filterChipRefs.current[2] = el; }} className="relative z-[1] inline-flex">
+              <M3Chip
+                label="Public"
+                selected={filter === 'public'}
+                showSelectedBackground={false}
+                onClick={() => setFilter('public')}
+                count={repos.filter((r) => !r.private).length}
+              />
+            </span>
+            <span ref={(el) => { filterChipRefs.current[3] = el; }} className="relative z-[1] inline-flex">
+              <M3Chip
+                label="Pinned"
+                selected={filter === 'pinned'}
+                showSelectedBackground={false}
+                onClick={() => setFilter('pinned')}
+                count={repos.filter((r) => r.pinned).length}
+              />
+            </span>
           </div>
         )}
 
@@ -429,6 +518,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               return (
                 <div
                   key={repo.id}
+                  ref={observeCard}
                   onClick={() => {
                     if (longPressTriggeredRef.current) {
                       longPressTriggeredRef.current = false;
@@ -462,7 +552,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                       longPressTimerRef.current = null;
                     }
                   }}
-                  className={`group relative p-4 rounded-2xl border transition-all duration-150 cursor-pointer select-none active:scale-[0.98] ${
+                  className={`repo-card group relative p-4 rounded-2xl border cursor-pointer select-none ${
                     isSelected ? 'ring-2' : ''
                   }`}
                   style={{
@@ -538,9 +628,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                                 color: colors.onSecondaryContainer,
                               }}
                             >
-                              <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                                <circle cx="12" cy="12" r="10" />
-                                <line x1="2" y1="12" x2="22" y2="12" />
+                              <svg className="w-2.5 h-2.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <circle cx="12" cy="12" r="9" />
+                                <line x1="3" y1="12" x2="21" y2="12" />
+                                <ellipse cx="12" cy="12" rx="4" ry="9" />
                               </svg>
                               <span>Public</span>
                             </span>

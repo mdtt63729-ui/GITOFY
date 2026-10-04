@@ -41,8 +41,16 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   const { colors, settings, updateSettings, triggerHaptic } = useTheme();
   const t = useT();
   const [tokenInput, setTokenInput] = useState('');
+  const [clientIdInput, setClientIdInput] = useState(settings.githubClientId || '');
   const [isValidating, setIsValidating] = useState(false);
   const [statusMessage, setStatusMessage] = useState<{ text: string; error: boolean } | null>(null);
+
+  const handleSaveClientId = () => {
+    triggerHaptic('success');
+    updateSettings({ githubClientId: clientIdInput.trim() });
+    setStatusMessage({ text: 'Client ID saved. Reloading to apply…', error: false });
+    window.setTimeout(() => window.location.reload(), 700);
+  };
 
   const handleValidateAndSaveToken = async () => {
     if (!tokenInput.trim()) {
@@ -508,6 +516,32 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 {statusMessage.text}
               </p>
             )}
+          </div>
+
+          {/* GitHub OAuth client id — the login always uses this, never Google */}
+          <div className="flex flex-col gap-2 border-t pt-3">
+            <p className="text-xs font-bold">GitHub OAuth Client ID</p>
+            <p className="text-[10px] opacity-70 leading-relaxed">
+              Login uses this GitHub client id — no Google OAuth is involved anywhere.
+              Leave it empty to use the built-in one, or paste your own GitHub OAuth App
+              (<span className="font-mono">Ov23li…</span>) or GitHub App
+              (<span className="font-mono">Iv23li…</span>) client id.
+            </p>
+            <M3TextField
+              label="Client ID"
+              value={clientIdInput}
+              onChange={(e) => setClientIdInput(e.target.value)}
+              placeholder="Iv23li… or Ov23li…"
+            />
+            <div className="flex items-center justify-between gap-2">
+              <M3Button variant="tonal" shape="capsule" size="compact" onClick={handleSaveClientId}>
+                Save client ID
+              </M3Button>
+              <span className="text-[10px] opacity-70 truncate">
+                Active: <span className="font-mono">{AuthConfig.clientId || '—'}</span>
+                {AuthConfig.clientId ? ` · ${isGitHubApp() ? 'GitHub App' : 'OAuth App'}` : ''}
+              </span>
+            </div>
           </div>
         </div>
 

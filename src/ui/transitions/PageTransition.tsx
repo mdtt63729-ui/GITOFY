@@ -28,7 +28,7 @@ export const PageTransition: React.FC<PageTransitionProps> = ({
       key={viewKey}
       className={`relative w-full h-full flex-1 flex flex-col overflow-hidden transition-all ${className}`}
       style={{
-        backgroundColor: colors.surface,
+        backgroundColor: settings.uiMode === 'nxt' ? 'transparent' : colors.surface,
         opacity: 1,
         transform: settings.reduceMotion
           ? 'none'

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useTheme } from '../ThemeContext';
 import { M3Button } from './M3Button';
 import { M3TextField } from './M3TextField';
@@ -31,7 +31,27 @@ export const M3Dialog: React.FC<M3DialogProps> = ({
   const { colors, settings, triggerHaptic } = useTheme();
   const [typedInput, setTypedInput] = useState('');
 
-  if (!isOpen) return null;
+  // Keep the dialog mounted briefly while it animates out, so opening AND
+  // closing are both smooth (it used to vanish instantly on close).
+  const [render, setRender] = useState(isOpen);
+  const [closing, setClosing] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setRender(true);
+      setClosing(false);
+      return;
+    }
+    if (!render) return;
+    setClosing(true);
+    const t = window.setTimeout(() => {
+      setRender(false);
+      setClosing(false);
+    }, 210);
+    return () => window.clearTimeout(t);
+  }, [isOpen, render]);
+
+  if (!render) return null;
 
   const handleDismiss = () => {
     triggerHaptic('tick');
@@ -59,14 +79,14 @@ export const M3Dialog: React.FC<M3DialogProps> = ({
       {/* Scrim */}
       <div
         onClick={handleDismiss}
-        className="absolute inset-0 bg-black/55 backdrop-blur-xs transition-opacity"
+        className={`absolute inset-0 bg-black/55 backdrop-blur-xs ${closing ? 'scrim-out' : 'scrim-in'}`}
       />
 
       {/* Modal Dialog Card */}
       <div
         role="alertdialog"
         aria-modal="true"
-        className="relative w-full max-w-sm rounded-[28px] p-6 shadow-2xl flex flex-col gap-4 z-10 animate-scale-in"
+        className={`relative w-full max-w-sm rounded-[28px] p-6 shadow-2xl flex flex-col gap-4 z-10 ${closing ? 'dialog-out' : 'dialog-in'}`}
         style={{
           backgroundColor: colors.surfaceContainerHigh,
           color: colors.onSurface,

@@ -40,10 +40,9 @@ export const FloatingNav: React.FC<FloatingNavProps> = ({
 
   return (
     <div
-      className={`fixed left-0 right-0 z-30 flex justify-center pointer-events-none ${
+      className={`gitofy-bottom-nav fixed left-0 right-0 z-30 flex justify-center pointer-events-none ${
         visible ? 'nav-reveal-bounce' : 'nav-hide-down'
       }`}
-      style={{ bottom: '16px' }}
     >
       <nav
         role="navigation"

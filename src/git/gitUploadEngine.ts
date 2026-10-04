@@ -284,46 +284,44 @@ export class GitUploadEngine {
       errorMessage: null,
     });
 
-    // Fetch remote branch HEAD
+    // Fetch remote branch HEAD.
+    //
+    // IMPORTANT: GitHub returns `409 Conflict — "Git Repository is empty."` for
+    // EVERY Git-database call (blobs / trees / commits / refs) until the
+    // repository has at least one commit. So an empty repo must be initialized
+    // first, otherwise the whole upload fails with that message.
     let remoteTreeMap: Record<string, { sha: string; size?: number }> = {};
     let baseCommitSha: string | null = null;
     let baseTreeSha: string | null = null;
 
-    try {
-      const refRes = await fetch(
-        `https://api.github.com/repos/${options.repoOwner}/${options.repoName}/git/ref/heads/${options.branch}`,
-        {
-          headers: {
-            Authorization: `Bearer ${options.token}`,
-            Accept: 'application/vnd.github.v3+json',
-          },
-        }
-      );
-      if (refRes.ok) {
+    const ghHeaders: Record<string, string> = {
+      Authorization: `Bearer ${options.token}`,
+      Accept: 'application/vnd.github.v3+json',
+    };
+
+    const readRemoteHead = async (): Promise<boolean> => {
+      try {
+        const refRes = await fetch(
+          `https://api.github.com/repos/${options.repoOwner}/${options.repoName}/git/ref/heads/${options.branch}`,
+          { headers: ghHeaders }
+        );
+        if (!refRes.ok) return false;
         const refData = await refRes.json();
-        baseCommitSha = refData.object.sha;
+        baseCommitSha = refData.object?.sha ?? null;
+        if (!baseCommitSha) return false;
 
         const commitRes = await fetch(
           `https://api.github.com/repos/${options.repoOwner}/${options.repoName}/git/commits/${baseCommitSha}`,
-          {
-            headers: {
-              Authorization: `Bearer ${options.token}`,
-              Accept: 'application/vnd.github.v3+json',
-            },
-          }
+          { headers: ghHeaders }
         );
-        if (commitRes.ok) {
-          const commitData = await commitRes.json();
-          baseTreeSha = commitData.tree.sha;
+        if (!commitRes.ok) return true; // head known; usable as a commit parent
+        const commitData = await commitRes.json();
+        baseTreeSha = commitData.tree?.sha ?? null;
 
+        if (baseTreeSha) {
           const treeRes = await fetch(
             `https://api.github.com/repos/${options.repoOwner}/${options.repoName}/git/trees/${baseTreeSha}?recursive=1`,
-            {
-              headers: {
-                Authorization: `Bearer ${options.token}`,
-                Accept: 'application/vnd.github.v3+json',
-              },
-            }
+            { headers: ghHeaders }
           );
           if (treeRes.ok) {
             const treeData = await treeRes.json();
@@ -336,9 +334,58 @@ export class GitUploadEngine {
             }
           }
         }
+        return true;
+      } catch {
+        return false;
       }
-    } catch {
-      // Empty repository
+    };
+
+    let headFound = await readRemoteHead();
+
+    if (!headFound) {
+      // Empty repository (no commits yet). Initialize it with a single tiny file
+      // via the Contents API, which creates the first commit and the branch and
+      // makes the Git database API usable. The file is intentionally NOT part of
+      // the new tree below, so the repo ends up containing only the project.
+      options.onProgress({
+        phase: 'diffing',
+        progress: 38,
+        currentFile: 'Empty repository detected — initializing it on GitHub...',
+        completedFiles: 0,
+        totalFiles: localFiles.length,
+        uploadedBytes: 0,
+        totalBytes,
+        speed: 'Initializing',
+        errorMessage: null,
+      });
+
+      const initContent = btoa(
+        `# ${options.repoName}\n\nRepository initialized by Gitofy.\n`
+      );
+      const initRes = await fetch(
+        `https://api.github.com/repos/${options.repoOwner}/${options.repoName}/contents/README.md`,
+        {
+          method: 'PUT',
+          headers: { ...ghHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: 'Initial commit (Gitofy)',
+            content: initContent,
+            branch: options.branch,
+          }),
+        }
+      );
+      if (!initRes.ok) {
+        const err = await initRes.json().catch(() => ({}));
+        throw new Error(
+          err.message ||
+            `Could not initialize the empty repository (HTTP ${initRes.status}).`
+        );
+      }
+
+      headFound = await readRemoteHead();
+      if (!headFound) {
+        throw new Error('Repository could not be initialized on GitHub.');
+      }
     }
 
     const diff = computeSmartDiff(localFiles, remoteTreeMap, false);

@@ -6,9 +6,18 @@ import gitofyIcon from '../assets/gitofy_icon.png';
  * white canvas, soft cloud base, playful organic floating shapes and a restrained
  * page-indicator motion. No raster/video asset is required, keeping startup fast.
  */
-export const SplashScreen: React.FC = () => {
+export interface SplashScreenProps {
+  /** When true the splash fades out so the app can appear smoothly underneath. */
+  exiting?: boolean;
+}
+
+export const SplashScreen: React.FC<SplashScreenProps> = ({ exiting = false }) => {
   return (
-    <div className="gitofy-splash" role="status" aria-label="Gitofy loading">
+    <div
+      className={`gitofy-splash${exiting ? ' gitofy-splash-exit' : ''}`}
+      role="status"
+      aria-label="Gitofy loading"
+    >
       <div className="splash-top-dots" aria-hidden="true">
         <span className="active" />
         <span />

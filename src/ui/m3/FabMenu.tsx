@@ -120,16 +120,19 @@ export const FabMenu: React.FC<FabMenuProps> = ({
 
       {/* FAB and Items Container anchored at bottom right */}
       <div
-        className={`fixed right-4 z-50 flex flex-col items-end transition-all ${
-          visible || isOpen ? 'translate-x-0 opacity-100 pointer-events-auto' : 'translate-x-24 opacity-0 pointer-events-none'
+        className={`gitofy-fab fixed right-4 z-50 flex flex-col items-end pointer-events-none ${
+          visible || isOpen ? 'translate-x-0 opacity-100' : 'translate-x-24 opacity-0'
         }`}
         style={{
-          bottom: '92px',
+          bottom: 'calc(92px + env(safe-area-inset-bottom))',
+          // Explicit transition properties (instead of transition-all) keep the
+          // WebView compositing only transform/opacity, which removes the lag.
+          transitionProperty: 'transform, opacity',
           transitionDuration: visible || isOpen ? '340ms' : '200ms',
-          // bounce.fab spring: entering with overshoot, exiting with clean acceleration
           transitionTimingFunction: visible || isOpen
             ? 'cubic-bezier(0.34, 1.45, 0.64, 1)'
             : 'cubic-bezier(0.4, 0, 1, 1)',
+          willChange: 'transform, opacity',
         }}
       >
         {/* Menu Items Stack (Section 5.4 & 6.2) */}
@@ -149,12 +152,13 @@ export const FabMenu: React.FC<FabMenuProps> = ({
                 key={item.id}
                 type="button"
                 onClick={() => handleAction(item.action)}
-                className="group relative flex items-center justify-end h-14 pl-4 pr-5 rounded-full shadow-lg border select-none cursor-pointer focus:outline-none transition-all active:scale-96"
+                className="group relative flex items-center justify-end h-14 pl-4 pr-5 rounded-full shadow-lg border select-none cursor-pointer focus:outline-none active:scale-95"
                 style={{
                   backgroundColor: item.bg,
                   color: item.text,
                   borderColor: colors.outlineVariant,
                   minWidth: '56px',
+                  transitionProperty: 'transform, opacity',
                   // Exact Section 6.2 motion: rise from above FAB, scale 0.6 -> 1, opacity 0 -> 1
                   opacity: isOpen ? 1 : 0,
                   transform: isOpen
@@ -195,7 +199,7 @@ export const FabMenu: React.FC<FabMenuProps> = ({
           type="button"
           onClick={toggleOpen}
           aria-label={isOpen ? 'Close menu' : 'Open quick actions menu'}
-          className="relative w-14 h-14 rounded-2xl flex items-center justify-center shadow-xl border cursor-pointer select-none focus:outline-none transition-all active:scale-95"
+          className="pointer-events-auto relative w-14 h-14 rounded-2xl flex items-center justify-center shadow-xl border cursor-pointer select-none focus:outline-none active:scale-95"
           style={{
             backgroundColor: isOpen ? colors.primary : colors.primaryContainer,
             color: isOpen ? colors.onPrimary : colors.onPrimaryContainer,
@@ -204,13 +208,14 @@ export const FabMenu: React.FC<FabMenuProps> = ({
             boxShadow: isOpen
               ? '0 6px 18px rgba(0,0,0,0.25)'
               : '0 4px 14px rgba(0,0,0,0.18)',
+            transitionProperty: 'transform, background-color, border-radius, box-shadow',
             transitionDuration: '240ms',
             transitionTimingFunction: 'cubic-bezier(0.2, 0, 0, 1)',
           }}
         >
           {/* Layer 1: Plus (+) Icon (Rotates 0 -> 90deg and fades out) */}
           <svg
-            className="w-6 h-6 absolute transition-all"
+            className="w-6 h-6 absolute"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -220,6 +225,7 @@ export const FabMenu: React.FC<FabMenuProps> = ({
             style={{
               opacity: isOpen ? 0 : 1,
               transform: isOpen ? 'rotate(90deg) scale(0.6)' : 'rotate(0deg) scale(1)',
+              transitionProperty: 'transform, opacity',
               transitionDuration: '220ms',
               transitionTimingFunction: 'cubic-bezier(0.2, 0, 0, 1)',
             }}
@@ -230,7 +236,7 @@ export const FabMenu: React.FC<FabMenuProps> = ({
 
           {/* Layer 2: Close (X) Icon (Rotates -90deg -> 0 and fades in) */}
           <svg
-            className="w-6 h-6 absolute transition-all"
+            className="w-6 h-6 absolute"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -240,6 +246,7 @@ export const FabMenu: React.FC<FabMenuProps> = ({
             style={{
               opacity: isOpen ? 1 : 0,
               transform: isOpen ? 'rotate(0deg) scale(1)' : 'rotate(-90deg) scale(0.6)',
+              transitionProperty: 'transform, opacity',
               transitionDuration: '220ms',
               transitionTimingFunction: 'cubic-bezier(0.2, 0, 0, 1)',
             }}

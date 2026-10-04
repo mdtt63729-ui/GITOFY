@@ -187,11 +187,14 @@ class MainActivity : AppCompatActivity() {
          */
         @JavascriptInterface
         fun oauthPost(url: String, bodyJson: String): String {
+            if (Uri.parse(url).host != "github.com") {
+                return JSONObject().put("status", 0).put("body", "{\"error\":\"host_not_allowed\"}").toString()
+            }
+            return runBlockingNetwork { performOauthPost(url, bodyJson) }
+        }
+
+        private fun performOauthPost(url: String, bodyJson: String): String {
             return try {
-                val parsed = Uri.parse(url)
-                if (parsed.host != "github.com") {
-                    return JSONObject().put("status", 0).put("body", "{\"error\":\"host_not_allowed\"}").toString()
-                }
                 val bodyObj = JSONObject(bodyJson)
                 val form = StringBuilder()
                 val keys = bodyObj.keys()
@@ -207,9 +210,10 @@ class MainActivity : AppCompatActivity() {
                     connectTimeout = 20_000
                     readTimeout = 30_000
                     doOutput = true
+                    instanceFollowRedirects = true
                     setRequestProperty("Accept", "application/json")
                     setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
-                    setRequestProperty("User-Agent", "Gitufy-Android")
+                    setRequestProperty("User-Agent", "Gitofy-Android")
                 }
                 conn.outputStream.use { it.write(form.toString().toByteArray(Charsets.UTF_8)) }
                 val status = conn.responseCode
@@ -217,8 +221,83 @@ class MainActivity : AppCompatActivity() {
                 val text = stream?.bufferedReader()?.use { it.readText() } ?: ""
                 JSONObject().put("status", status).put("body", text).toString()
             } catch (e: Exception) {
+                android.util.Log.e("GitofyWeb", "oauthPost failed: ${e.javaClass.simpleName} ${e.message}", e)
                 JSONObject().put("status", 0).put("body", "{\"error\":\"network_error\"}").toString()
             }
+        }
+
+        /**
+         * Authenticated HTTPS GET performed natively, returning
+         * {"status": <int>, "body": "<raw response text>"}.
+         *
+         * Used for GitHub Actions job logs: the REST endpoint answers with a 302
+         * redirect to a storage host that does not send CORS headers, so a browser
+         * `fetch` from the WebView is blocked by CORS. Doing it here follows the
+         * redirect without CORS. The Authorization header is deliberately NOT
+         * forwarded to the redirected (signed) URL, because storage backends reject
+         * requests that carry both a SAS signature and an Authorization header.
+         * Restricted to api.github.com to keep this a narrow, auditable tunnel.
+         */
+        @JavascriptInterface
+        fun githubGetText(url: String, token: String): String {
+            if (Uri.parse(url).host != "api.github.com") {
+                return JSONObject().put("status", 0).put("body", "{\"error\":\"host_not_allowed\"}").toString()
+            }
+            return runBlockingNetwork { performGithubGetText(url, token) }
+        }
+
+        private fun performGithubGetText(url: String, token: String): String {
+            return try {
+                var conn = (URL(url).openConnection() as HttpURLConnection).apply {
+                    requestMethod = "GET"
+                    connectTimeout = 20_000
+                    readTimeout = 30_000
+                    instanceFollowRedirects = false
+                    setRequestProperty("Accept", "application/vnd.github+json")
+                    setRequestProperty("User-Agent", "Gitufy-Android")
+                    if (token.isNotBlank()) setRequestProperty("Authorization", "Bearer $token")
+                }
+                var status = conn.responseCode
+                if (status in 300..399) {
+                    val location = conn.getHeaderField("Location")
+                    conn.disconnect()
+                    if (!location.isNullOrBlank()) {
+                        conn = (URL(location).openConnection() as HttpURLConnection).apply {
+                            requestMethod = "GET"
+                            connectTimeout = 20_000
+                            readTimeout = 30_000
+                            instanceFollowRedirects = true
+                            setRequestProperty("User-Agent", "Gitufy-Android")
+                        }
+                        status = conn.responseCode
+                    }
+                }
+                val stream = if (status in 200..299) conn.inputStream else conn.errorStream
+                val text = stream?.bufferedReader()?.use { it.readText() } ?: ""
+                JSONObject().put("status", status).put("body", text).toString()
+            } catch (e: Exception) {
+                JSONObject().put("status", 0).put("body", "{\"error\":\"network_error\"}").toString()
+            }
+        }
+
+        /**
+         * Lists the Google accounts present on this device, as a JSON array of
+         * {"name": "<email>", "label": "<display name>"}. Used to populate the
+         * "Choose an account" chooser so it shows the user's real accounts, like
+         * Google's own account picker. Never throws; returns "[]" on any failure.
+         */
+        @JavascriptInterface
+        fun getGoogleAccounts(): String {
+            val out = org.json.JSONArray()
+            try {
+                val am = android.accounts.AccountManager.get(this@MainActivity)
+                for (account in am.getAccountsByType("com.google")) {
+                    out.put(JSONObject().put("name", account.name).put("label", account.name))
+                }
+            } catch (_: Exception) {
+                // Permission missing or no accounts — return what we have.
+            }
+            return out.toString()
         }
 
         /** Expected bundle root hash (anchor) baked into the APK by CI. */
@@ -374,17 +453,65 @@ class MainActivity : AppCompatActivity() {
         fileChooserCallback = null
     }
 
+    /**
+     * Runs a blocking network call off the UI thread and waits for the result.
+     *
+     * Some Android/WebView versions dispatch JavaScript-interface methods on the
+     * main thread, where any network call throws NetworkOnMainThreadException —
+     * which surfaced in the app as "DEVFLOW_network_error" and broke the GitHub
+     * device-flow login. Doing the work on a worker thread fixes that.
+     */
+    private fun runBlockingNetwork(block: () -> String): String {
+        if (android.os.Looper.myLooper() != android.os.Looper.getMainLooper()) return block()
+        var out = "{\"status\":0,\"body\":\"{\\\"error\\\":\\\"network_error\\\"}\"}"
+        val latch = CountDownLatch(1)
+        Thread {
+            out = block()
+            latch.countDown()
+        }.start()
+        latch.await(30, TimeUnit.SECONDS)
+        return out
+    }
+
+    /** Opens a URL outside the app (Chrome Custom Tab, else any browser). */
+    private fun openExternalUrl(url: String) {
+        if (url.isBlank()) return
+        try {
+            val intent = CustomTabsIntent.Builder().setShowTitle(true).build()
+            intent.launchUrl(this, Uri.parse(url))
+        } catch (e: Exception) {
+            try {
+                startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            } catch (_: Exception) {
+                android.util.Log.e("GitofyWeb", "No browser available for $url")
+            }
+        }
+    }
+
+    /** Hides the status and navigation bars so the WebView is truly fullscreen. */
+    private fun applyImmersiveMode() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowCompat.getInsetsController(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+    }
+
+    // Android re-shows the system bars after a dialog, the keyboard, or a focus
+    // change; re-hide them whenever the window regains focus so the app stays
+    // fullscreen instead of drifting back to a status-bar layout.
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) applyImmersiveMode()
+    }
+
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(com.gitofy.app.R.style.Theme_Gitofy)
         super.onCreate(savedInstanceState)
 
         // Immersive edge-to-edge: the WebView occupies the entire display.
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        WindowCompat.getInsetsController(window, window.decorView).apply {
-            hide(WindowInsetsCompat.Type.statusBars() or WindowInsetsCompat.Type.navigationBars())
-            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
-        }
+        applyImmersiveMode()
 
         // NOTE: WebViewAssetLoader strips the registered prefix and then opens the
         // *remainder* relative to the assets root. So a "/web/" handler maps
@@ -407,6 +534,9 @@ class MainActivity : AppCompatActivity() {
             settings.builtInZoomControls = false
             settings.displayZoomControls = false
             settings.javaScriptCanOpenWindowsAutomatically = true
+            // Keep text at the CSS-specified size: WebView "text autosizing" rescales
+            // text and makes the UI look like a web page rather than a native app.
+            settings.textZoom = 100
             isVerticalScrollBarEnabled = false
             isHorizontalScrollBarEnabled = false
             overScrollMode = WebView.OVER_SCROLL_NEVER
@@ -423,6 +553,24 @@ class MainActivity : AppCompatActivity() {
                 override fun shouldInterceptRequest(view: WebView, url: String): WebResourceResponse? =
                     assetLoader.shouldInterceptRequest(Uri.parse(url))
                         ?: super.shouldInterceptRequest(view, url)
+
+                // The app is fully offline-capable, so ANY navigation that is not to
+                // the local app-asset host must leave the app and open in the system
+                // browser (Chrome Custom Tab). This keeps GitHub — and every other
+                // link — out of the in-app WebView, so the app never feels like a
+                // web page and never opens GitHub inside itself.
+                override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                    if (request.url.host == "appassets.androidplatform.net") return false
+                    openExternalUrl(request.url.toString())
+                    return true
+                }
+
+                @Deprecated("Deprecated in Java")
+                override fun shouldOverrideUrlLoading(view: WebView, url: String): Boolean {
+                    if (Uri.parse(url).host == "appassets.androidplatform.net") return false
+                    openExternalUrl(url)
+                    return true
+                }
 
                 override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
                     android.util.Log.e("GitofyWeb", "Load error ${error.errorCode}: ${error.description} ${request.url}")

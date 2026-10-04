@@ -54,10 +54,16 @@ interface Manifest {
 }
 
 export async function verifyBundleIntegrity(): Promise<IntegrityReport> {
+  // A 64-hex anchor is baked into the APK by CI. Its presence means the bundle
+  // MUST carry a matching manifest — so a missing or empty manifest is itself
+  // tampering (someone stripped the check), not merely "unavailable".
+  const nativeRoot = (bridge()?.getExpectedIntegrityRoot?.() ?? '').trim();
+  const hasNativeAnchor = HEX64.test(nativeRoot);
+
   const unavailable = (reason: string): IntegrityReport => ({
-    status: 'unavailable',
+    status: hasNativeAnchor ? 'tampered' : 'unavailable',
     checked: 0,
-    expectedRoot: '',
+    expectedRoot: hasNativeAnchor ? nativeRoot : '',
     actualRoot: '',
     reason,
   });
@@ -92,8 +98,6 @@ export async function verifyBundleIntegrity(): Promise<IntegrityReport> {
   }
 
   const actualRoot = await computeRoot(actual);
-  const nativeRoot = (bridge()?.getExpectedIntegrityRoot?.() ?? '').trim();
-  const hasNativeAnchor = HEX64.test(nativeRoot);
 
   const manifestOk = actualRoot === manifest.root;
   const nativeOk = !hasNativeAnchor || nativeRoot === manifest.root;

@@ -7,6 +7,9 @@ export interface M3ChipProps {
   onClick?: () => void;
   icon?: React.ReactNode;
   showCheckmark?: boolean;
+  /** When false the selected chip draws no own background, so a parent can show an
+   *  animated sliding indicator behind it (used by the Home filter chips). */
+  showSelectedBackground?: boolean;
   className?: string;
   count?: number;
 }
@@ -17,6 +20,7 @@ export const M3Chip: React.FC<M3ChipProps> = ({
   onClick,
   icon,
   showCheckmark = true,
+  showSelectedBackground = true,
   className = '',
   count,
 }) => {
@@ -28,7 +32,7 @@ export const M3Chip: React.FC<M3ChipProps> = ({
     onClick?.();
   };
 
-  const bg = selected ? colors.secondaryContainer : 'transparent';
+  const bg = selected && showSelectedBackground ? colors.secondaryContainer : 'transparent';
   const text = selected ? colors.onSecondaryContainer : colors.onSurfaceVariant;
   const border = selected ? 'transparent' : colors.outlineVariant;
 
@@ -47,8 +51,8 @@ export const M3Chip: React.FC<M3ChipProps> = ({
         borderColor: border,
         borderWidth: selected ? 0 : 1,
         borderStyle: 'solid',
-        transform: isPressed && !settings.reduceMotion ? 'scale(0.96)' : 'scale(1)',
-        transition: 'transform 0.15s ease, background-color 0.2s ease, border-color 0.2s ease',
+        transform: isPressed && !settings.reduceMotion ? 'scale(0.94)' : 'scale(1)',
+        transition: 'transform 0.18s cubic-bezier(.34,1.56,.64,1), background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease',
       }}
       className={`h-8 px-3 rounded-lg inline-flex items-center gap-1.5 text-xs font-medium cursor-pointer select-none whitespace-nowrap focus:outline-none ${className}`}
     >

@@ -156,8 +156,8 @@ html[data-ui-mode='nxt'] body {
   inset: 0;
   z-index: 1000;
   overflow: hidden;
-  background: #fff;
-  color: #101a38;
+  background: #000;
+  color: #f4f6fb;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -631,3 +631,226 @@ html[data-ui-mode='nxt'] body {
 .gsheet-btn { position: relative; overflow: hidden; transition: transform .25s cubic-bezier(.2,0,0,1), filter .25s cubic-bezier(.2,0,0,1), background .25s cubic-bezier(.2,0,0,1), border-color .25s cubic-bezier(.2,0,0,1); }
 .gsheet-btn:active { transform: translateY(0) scale(.98); filter: brightness(.98); }
 @media (prefers-reduced-motion: reduce) { .gsheet-spinner { animation: none !important; } }
+
+/* ------------------------------------------------------------------ *
+ * Fullscreen + Home app bar + filter chips
+ * ------------------------------------------------------------------ */
+
+/* Large app bar that collapses smoothly while scrolling (scroll animation). */
+.gitofy-appbar {
+  padding-top: max(12px, env(safe-area-inset-top));
+  padding-bottom: 8px;
+  transition: padding 300ms cubic-bezier(.2,0,0,1), box-shadow 300ms ease,
+              background-color 150ms ease, border-color 150ms ease;
+}
+.gitofy-appbar-compact {
+  padding-top: max(7px, env(safe-area-inset-top));
+  padding-bottom: 7px;
+  box-shadow: 0 6px 18px -12px rgba(0,0,0,.45);
+}
+.gitofy-appbar-subtitle {
+  max-height: 22px;
+  opacity: 1;
+  transition: opacity 220ms ease, max-height 300ms cubic-bezier(.2,0,0,1),
+              transform 300ms cubic-bezier(.2,0,0,1);
+}
+.gitofy-appbar-compact .gitofy-appbar-subtitle {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-4px);
+  overflow: hidden;
+}
+.gitofy-appbar .gitofy-wordmark { transition: font-size 300ms cubic-bezier(.2,0,0,1); }
+.gitofy-appbar-compact .gitofy-wordmark { font-size: 1.2rem; }
+
+/* Animated sliding indicator behind the Home filter chips (All/Private/Public/Pinned). */
+.filter-chip-indicator {
+  position: absolute;
+  left: 0;
+  top: 4px;
+  height: 32px;
+  border-radius: 12px;
+  pointer-events: none;
+  z-index: 0;
+  will-change: transform, width;
+  transition: transform 420ms cubic-bezier(.34,1.56,.64,1),
+              width 420ms cubic-bezier(.34,1.56,.64,1),
+              background-color 200ms ease;
+}
+
+/* Edge-to-edge safe areas for the fixed bottom navigation. */
+.gitofy-bottom-nav {
+  bottom: calc(16px + env(safe-area-inset-bottom));
+}
+
+/* Repository boxes reveal as they scroll into view (scroll animation for the cards). */
+.repo-card {
+  opacity: 0;
+  transform: translateY(16px) scale(.985);
+  transition: opacity 420ms cubic-bezier(.2,0,0,1),
+              transform 460ms cubic-bezier(.2,.9,.25,1.06),
+              background-color 150ms ease,
+              border-color 150ms ease;
+}
+.repo-card.repo-card-revealed {
+  opacity: 1;
+  transform: none;
+}
+.repo-card:active {
+  transform: scale(.98);
+}
+
+/* Black splash: light copy + a smooth fade-out into the app (no white flash). */
+.gitofy-splash .splash-copy h1 { color: #ffffff; }
+.gitofy-splash .splash-copy p { color: rgba(255, 255, 255, .62); }
+.gitofy-splash .splash-top-dots span { background: rgba(255, 255, 255, .22); }
+.gitofy-splash .splash-top-dots .active { background: #7aa2ff; }
+.gitofy-splash-exit {
+  opacity: 0;
+  transform: scale(1.03);
+  transition: opacity 400ms cubic-bezier(.2, 0, 0, 1), transform 400ms cubic-bezier(.2, 0, 0, 1);
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------ *
+ * Native-app feel — remove the tells that make it look like a web page
+ * ------------------------------------------------------------------ */
+
+/* No blue tap highlight, no long-press callout, no double-tap zoom. */
+* { -webkit-tap-highlight-color: transparent; }
+html, body {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  overscroll-behavior: none;
+  -webkit-touch-callout: none;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* Text selection stays available where it matters (code, logs, fields). */
+input, textarea, [contenteditable='true'],
+.select-text, .select-text * {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
+/* Images/links must not behave like a browser (drag ghost, focus ring). */
+img, a { -webkit-user-drag: none; user-drag: none; }
+*:focus, *:focus-visible { outline: none; }
+
+/* Hide every scrollbar so surfaces look native, not like a scrolling web page. */
+* { scrollbar-width: none; -ms-overflow-style: none; }
+::-webkit-scrollbar { width: 0 !important; height: 0 !important; display: none !important; }
+
+/* Onboarding page icons fill their badge. */
+.onboarding-icon svg { width: 100%; height: 100%; display: block; }
+
+/* ------------------------------------------------------------------ *
+ * Calculating screen + premium page/overlay motion
+ * ------------------------------------------------------------------ */
+
+@keyframes calcIn {
+  from { opacity: 0; transform: translate3d(0, 14px, 0) scale(.98); }
+  to   { opacity: 1; transform: none; }
+}
+.calc-in { animation: calcIn 520ms cubic-bezier(.16,.84,.24,1) both; will-change: opacity, transform; }
+
+@keyframes calcHalo {
+  0%   { transform: scale(.72); opacity: .55; }
+  70%  { opacity: 0; }
+  100% { transform: scale(1.55); opacity: 0; }
+}
+.calc-halo {
+  position: absolute;
+  width: 104px;
+  height: 104px;
+  border-radius: 999px;
+  animation: calcHalo 2.6s cubic-bezier(.2,0,0,1) infinite;
+  will-change: transform, opacity;
+  pointer-events: none;
+}
+.calc-halo-2 { animation-delay: 1.3s; }
+
+@keyframes calcStepPulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.14); }
+}
+.calc-step-active { animation: calcStepPulse 1.5s ease-in-out infinite; }
+
+/* Smooth stage / page enter used across the upload flow. */
+@keyframes stageIn {
+  from { opacity: 0; transform: translate3d(0, 12px, 0); }
+  to   { opacity: 1; transform: none; }
+}
+.stage-enter { animation: stageIn 380ms cubic-bezier(.16,.84,.24,1) both; }
+
+/* Dialog open / close (M3 emphase + accelerate). */
+@keyframes dialogIn {
+  from { opacity: 0; transform: translate3d(0, 10px, 0) scale(.90); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes dialogOut {
+  from { opacity: 1; transform: none; }
+  to   { opacity: 0; transform: translate3d(0, 8px, 0) scale(.94); }
+}
+.dialog-in { animation: dialogIn 300ms cubic-bezier(.16,.84,.24,1) both; }
+.dialog-out { animation: dialogOut 200ms cubic-bezier(.4,0,1,1) both; }
+
+@keyframes scrimIn { from { opacity: 0; } to { opacity: 1; } }
+@keyframes scrimOut { from { opacity: 1; } to { opacity: 0; } }
+.scrim-in { animation: scrimIn 220ms ease both; }
+.scrim-out { animation: scrimOut 180ms ease both; }
+
+/* Bottom sheet exit (mirrors the existing slide-up entrance). */
+@keyframes sheetOut {
+  from { transform: translate3d(0, 0, 0); }
+  to   { transform: translate3d(0, 100%, 0); }
+}
+.sheet-out { animation: sheetOut 220ms cubic-bezier(.4,0,1,1) both; }
+
+/* ------------------------------------------------------------------ *
+ * App-wide typeface: Josefin Sans everywhere, a little bolder.
+ * Josefin Sans has no Bengali glyphs, so Noto Sans Bengali sits next in
+ * the stack to carry any Bengali text.
+ * ------------------------------------------------------------------ */
+:root {
+  --gitofy-font: 'Josefin Sans', 'Noto Sans Bengali', 'Trebuchet MS', system-ui, sans-serif;
+}
+html, body { font-family: var(--gitofy-font); font-weight: 500; }
+button, input, select, textarea { font-family: var(--gitofy-font); }
+*:not(svg):not(svg *) { font-family: var(--gitofy-font) !important; }
+html[data-ui-mode='nxt'] body { font-weight: 600; }
+html[data-ui-mode='nxt'] h1,
+html[data-ui-mode='nxt'] h2,
+html[data-ui-mode='nxt'] h3,
+html[data-ui-mode='nxt'] h4 { font-weight: 700; letter-spacing: -0.01em; }
+
+/* ------------------------------------------------------------------ *
+ * NXT reference theme: white rounded cards, soft lavender shadows,
+ * purple gradient pills and gradient icon rings.
+ * ------------------------------------------------------------------ */
+html[data-ui-mode='nxt'] .repo-card {
+  border-radius: 28px !important;
+  border-color: transparent !important;
+  background-color: #FFFFFF !important;
+  box-shadow: 0 14px 34px -16px rgba(138, 75, 255, .30);
+}
+/* Primary pills become the reference's purple gradient button. */
+html[data-ui-mode='nxt'] button[data-variant='filled'] {
+  background-image: linear-gradient(135deg, #8A4BFF 0%, #A15CE1 58%, #C95B9D 100%) !important;
+  border-color: transparent !important;
+  box-shadow: 0 12px 26px -12px rgba(138, 75, 255, .70);
+}
+html[data-ui-mode='nxt'] button[data-variant='tonal'] {
+  background-image: linear-gradient(135deg, rgba(138, 75, 255, .16), rgba(201, 91, 157, .14)) !important;
+}
+/* Icon buttons get the soft gradient ring from the reference. */
+html[data-ui-mode='nxt'] button[data-m3='icon-button'] {
+  background-image: linear-gradient(135deg, rgba(138, 75, 255, .18), rgba(138, 75, 255, .02));
+  box-shadow: 0 8px 18px -10px rgba(138, 75, 255, .45);
+}
+/* Reusable gradient icon ring. */
+.nxt-ring {
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(138, 75, 255, .26), rgba(138, 75, 255, .03));
+  box-shadow: 0 10px 22px -12px rgba(138, 75, 255, .5);
+}

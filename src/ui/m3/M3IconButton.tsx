@@ -54,6 +54,7 @@ export const M3IconButton: React.FC<M3IconButtonProps> = ({
   return (
     <button
       {...rest}
+      data-m3="icon-button"
       disabled={disabled}
       onClick={handleClick}
       onMouseDown={() => setIsPressed(true)}

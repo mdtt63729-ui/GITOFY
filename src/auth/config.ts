@@ -52,7 +52,22 @@ const PLACEHOLDER = 'GITUFY_CLIENT_ID_PLACEHOLDER';
 const DEFAULT_CLIENT_ID = 'Iv23liLESLFaJa3yzCdE';
 const DEFAULT_APP_ID = '5182766';
 
-const clientId = runtime.clientId || baked.clientId || DEFAULT_CLIENT_ID;
+function readStoredClientId(): string {
+  try {
+    if (typeof localStorage === 'undefined') return '';
+    const raw = localStorage.getItem('gitofy_settings');
+    if (!raw) return '';
+    const parsed = JSON.parse(raw) as { githubClientId?: unknown };
+    return typeof parsed.githubClientId === 'string' ? parsed.githubClientId.trim() : '';
+  } catch {
+    return '';
+  }
+}
+
+// A client id entered in Settings wins over the baked default, so you can point
+// the app at your own GitHub OAuth App / GitHub App. No Google OAuth is involved
+// anywhere — the login is always the GitHub OAuth client id.
+const clientId = runtime.clientId || readStoredClientId() || baked.clientId || DEFAULT_CLIENT_ID;
 
 function detectClientType(id: string): ClientType {
   return id.startsWith('Iv') ? 'github-app' : 'oauth-app';

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../ui/ThemeContext';
+import { openExternal } from '../utils/external';
 import { Repository, GitHubRelease, ReleaseAsset } from '../types';
 import { M3Button } from '../ui/m3/M3Button';
 import { M3IconButton } from '../ui/m3/M3IconButton';
@@ -386,7 +387,7 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
         <div className="flex items-center gap-1">
           <M3IconButton
             aria-label="Open on GitHub"
-            onClick={() => window.open(repo.html_url, '_blank')}
+            onClick={() => openExternal(repo.html_url)}
           >
             <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
