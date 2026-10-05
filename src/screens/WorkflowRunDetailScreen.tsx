@@ -153,7 +153,7 @@ export const WorkflowRunDetailScreen:React.FC<Props>=({repoName,workflow,initial
   // Memoised so the once-a-second clock tick does not re-create (and therefore
   // re-render) the whole log list.
   const logLineNodes = useMemo(() => filtered.slice(-1500).map(l=>(
-    <div key={l.index} className={`flex gap-2 ${wrap?'whitespace-pre-wrap break-words':'whitespace-pre'}`} style={{color:l.level==='error'?'#ff8a80':l.level==='warning'?'#ffd166':l.level==='notice'?'#8bd5ff':'rgba(255,255,255,.82)'}}>
+    <div key={l.index} className={`gitofy-logline flex gap-2 ${wrap?'whitespace-pre-wrap break-words':'whitespace-pre'}`} style={{color:l.level==='error'?'#ff8a80':l.level==='warning'?'#ffd166':l.level==='notice'?'#8bd5ff':'rgba(255,255,255,.82)'}}>
       <span className="select-text shrink-0 text-white/25 text-right" style={{width:showLines?42:0,display:showLines?'block':'none'}}>{l.index+1}</span>
       {showTs&&l.ts&&<span className="text-white/35 shrink-0">{l.ts}</span>}
       <span className="select-text">{l.text}</span>
@@ -181,9 +181,9 @@ export const WorkflowRunDetailScreen:React.FC<Props>=({repoName,workflow,initial
   };
 
   const runTone=toneOf({status:run?.status||'queued',conclusion:run?.conclusion||null}); const runColor=colorFor(runTone,colors);
-  return <div className="flex-1 flex flex-col gitofy-scroll select-none" style={{backgroundColor:colors.surface}}>
+  return <div className="flex-1 flex flex-col gitofy-scroll select-none" style={{backgroundColor:colors.surface}} onScroll={()=>{if(actionMenuOpen)setActionMenuOpen(false)}}>
     <div className="sticky top-0 z-30 px-3 py-2.5 border-b gitofy-topbar" style={{backgroundColor:`${colors.surface}f5`,borderColor:colors.outlineVariant}}>
-      <div className="flex items-start gap-2"><M3IconButton aria-label="Back" onClick={()=>{onBack();leavingRef.current=true;}}><svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></M3IconButton><div className="min-w-0 flex-1"><h2 className="text-base font-black truncate">{workflow.name}</h2><p className="text-[10px] font-mono opacity-65 truncate">{repoName} · @{settings.githubUsername||'user'} · #{run?.run_number??'—'} · {run?.head_branch||'main'}</p></div><M3IconButton aria-label="Run actions" onClick={()=>{triggerHaptic('tick');setActionMenuOpen(v=>!v)}}><svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg></M3IconButton></div>
+      <div className="flex items-start gap-2"><M3IconButton aria-label="Back" onClick={()=>{leavingRef.current=true;onBack();}}><svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></M3IconButton><div className="min-w-0 flex-1"><h2 className="text-base font-black truncate">{workflow.name}</h2><p className="text-[10px] font-mono opacity-65 truncate">{repoName} · @{settings.githubUsername||'user'} · #{run?.run_number??'—'} · {run?.head_branch||'main'}</p></div><M3IconButton aria-label="Run actions" onClick={()=>{triggerHaptic('tick');setActionMenuOpen(v=>!v)}}><svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg></M3IconButton></div>
       <div className="mt-2 flex items-center gap-2 overflow-x-auto"><span className="px-2.5 py-1 rounded-full text-[10px] font-bold whitespace-nowrap" style={{backgroundColor:connection==='offline'?colors.errorContainer:connection==='reconnecting'?colors.tertiaryContainer:colors.diffAddedContainer,color:connection==='offline'?colors.error:connection==='reconnecting'?colors.tertiary:colors.diffAdded}}><span className="relative inline-grid align-middle"><span style={{gridArea:'1 / 1',opacity:polling?0:1,transition:'opacity 220ms ease'}}>● {connection==='offline'?'Offline':connection==='reconnecting'?'Reconnecting':statusText(runTone)}</span><span style={{gridArea:'1 / 1',opacity:polling?1:0,transition:'opacity 220ms ease'}}>● Polling</span></span>{connection!=='live'?` · Updated ${Math.max(0,Math.floor((Date.now()-updatedAt)/1000))}s ago`:''}</span><span className="text-[10px] font-mono opacity-55 whitespace-nowrap">Elapsed {duration(run?.created_at,run?.status==='completed'?run.updated_at:null,now)}</span><button className="text-[10px] font-bold underline whitespace-nowrap" onClick={()=>openExternal(run?.html_url)}>GitHub ↗</button><span className="ml-auto px-2 py-1 rounded-full text-[10px] font-black whitespace-nowrap" style={{color:runColor,backgroundColor:`${runColor}22`}}>{statusText(runTone)}</span></div>
     </div>
     <div className="p-4 pb-28 flex flex-col gap-3">
@@ -210,9 +210,8 @@ export const WorkflowRunDetailScreen:React.FC<Props>=({repoName,workflow,initial
 
     {actionMenuOpen && <>
       <div
-        className="fixed inset-0 z-40"
-        style={{ backgroundColor: 'rgba(0,0,0,.22)', pointerEvents: 'auto' }}
-        onPointerDown={() => setActionMenuOpen(false)}
+        className="fixed inset-0 z-20"
+        style={{ backgroundColor: 'rgba(0,0,0,.22)' }}
         onClick={() => setActionMenuOpen(false)}
       />
       <div className="fixed right-3 z-[70] flex flex-col items-end gap-2" style={{top:'calc(var(--gitofy-top-bar) + 46px)'}}>

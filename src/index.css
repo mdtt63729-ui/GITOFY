@@ -515,6 +515,11 @@
 @keyframes workflowPulse { 0%,100% { transform:scale(1); opacity:1; } 50% { transform:scale(1.08); opacity:.72; } }
 @keyframes workflowRing { from { transform:scale(.72); opacity:.5; } to { transform:scale(1.35); opacity:0; } }
 
+/* Run-detail log rows: skip layout/paint for the lines that are scrolled out of
+   view, so a long (up to 1500-line) tail no longer makes the page scroll stutter
+   inside the Android WebView. contain-intrinsic-size keeps the scroll height stable. */
+.gitofy-logline { content-visibility: auto; contain-intrinsic-size: auto 22px; }
+
 /* ---------------------------------------------------------------------------
    Gitufy OAuth login motion (PRD v2.0 §5.4). All login-flow keyframes live
    here so screens stay declarative and reduced-motion users get cross-fades.

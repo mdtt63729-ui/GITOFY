@@ -220,8 +220,7 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
     <>
       <div
         className="fixed inset-0 z-[75]"
-        style={{ backgroundColor: 'rgba(0,0,0,0.28)', pointerEvents: 'auto' }}
-        onPointerDown={() => setMenuRun(null)}
+        style={{ backgroundColor: 'rgba(0,0,0,0.28)' }}
         onClick={() => setMenuRun(null)}
       />
       <div className="fixed left-1/2 -translate-x-1/2 z-[80] w-[290px] rounded-3xl border p-2 shadow-2xl gitofy-screen-in" style={{ top: '42%', backgroundColor: colors.surfaceContainerHigh, borderColor: colors.outlineVariant }}>
