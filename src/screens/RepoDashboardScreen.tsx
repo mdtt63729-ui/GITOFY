@@ -15,6 +15,7 @@ export interface RepoDashboardScreenProps {
   onOpenFiles: () => void;
   onOpenCommits: () => void;
   onRunWorkflows: () => void;
+  onOpenRepoSettings?: () => void;
   onDeleteRepo: () => void;
   onDeleteContents: () => void;
   onShareRepo: () => void;
@@ -58,6 +59,7 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
   onOpenFiles,
   onOpenCommits,
   onRunWorkflows,
+  onOpenRepoSettings,
   onDeleteRepo,
   onDeleteContents,
   onShareRepo,
@@ -509,6 +511,10 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
                 <button type="button" className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-left text-sm font-semibold hover:bg-white/5 active:scale-[0.98] transition-all" onClick={() => { setShowMoreMenu(false); onShareRepo(); }}>
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>
                   Share
+                </button>
+                <button type="button" className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-left text-sm font-semibold hover:bg-white/5 active:scale-[0.98] transition-all" onClick={() => { setShowMoreMenu(false); onOpenRepoSettings?.(); }}>
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+                  Repository settings
                 </button>
                 <button type="button" className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-left text-sm font-semibold hover:bg-white/5 active:scale-[0.98] transition-all" style={{ color: colors.error }} onClick={() => { setShowMoreMenu(false); onDeleteContents(); }}>
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></svg>

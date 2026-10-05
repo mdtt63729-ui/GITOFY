@@ -15,8 +15,7 @@ import type { GitHubAccount } from '../auth/types';
 export interface SettingsScreenProps {
   onBack: () => void;
   onTokenUpdated?: () => void;
-  onOpenGallery?: () => void;
-  onOpenMotionLab?: () => void;
+  onOpenGitHubSettings?: () => void;
   onOpenPermissions?: () => void;
   onOpenDiagnostics?: () => void;
   accounts?: GitHubAccount[];
@@ -29,8 +28,7 @@ export interface SettingsScreenProps {
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onBack,
   onTokenUpdated,
-  onOpenGallery,
-  onOpenMotionLab,
+  onOpenGitHubSettings,
   onOpenPermissions,
   onOpenDiagnostics,
   accounts = [],
@@ -553,36 +551,39 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
           </div>
         </div>
 
-        {/* Developer & Design Verification Tools */}
+        {/* GitHub account settings — everything github.com/settings lets you change */}
+        {onOpenGitHubSettings && (
+          <div
+            className="p-5 rounded-3xl border flex flex-col gap-3"
+            style={{ backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant }}
+          >
+            <div className="flex items-center gap-2">
+              <span
+                className="w-6 h-6 rounded-full flex items-center justify-center"
+                style={{ backgroundColor: colors.primaryContainer, color: colors.onPrimaryContainer }}
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor"><path d="M12 .5C5.7.5.5 5.7.5 12c0 5.1 3.3 9.4 7.9 10.9.6.1.8-.3.8-.6v-2c-3.2.7-3.9-1.5-3.9-1.5-.5-1.3-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.8 1.3 3.5 1 .1-.8.4-1.3.7-1.6-2.6-.3-5.3-1.3-5.3-5.8 0-1.3.5-2.3 1.2-3.1-.1-.3-.5-1.5.1-3.1 0 0 1-.3 3.3 1.2a11.5 11.5 0 0 1 6 0C17 4.8 18 5.1 18 5.1c.6 1.6.2 2.8.1 3.1.8.8 1.2 1.8 1.2 3.1 0 4.5-2.7 5.5-5.3 5.8.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6 4.6-1.5 7.9-5.8 7.9-10.9C23.5 5.7 18.3.5 12 .5z"/></svg>
+              </span>
+              <span className="text-xs font-bold uppercase tracking-wider">GitHub account</span>
+            </div>
+            <p className="text-xs leading-relaxed opacity-80" style={{ color: colors.onSurfaceVariant }}>
+              Edit your name, bio, company, location, website, social handle and hireable status — the same
+              fields as github.com/settings/profile. Repository settings (visibility, features, merge options,
+              archive, default branch) live on each repository's own settings page.
+            </p>
+            <M3Button variant="tonal" shape="rounded" size="medium" className="w-full justify-between" onClick={onOpenGitHubSettings}>
+              <span>Open GitHub account settings</span>
+              <span>→</span>
+            </M3Button>
+          </div>
+        )}
+
+        {/* Danger zone — log out of every account */}
         <div
           className="p-5 rounded-3xl border flex flex-col gap-3"
           style={{ backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant }}
         >
-          <div className="flex items-center gap-2">
-            <span
-              className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold"
-              style={{ backgroundColor: colors.primaryContainer, color: colors.onPrimaryContainer }}
-            >
-              M3
-            </span>
-            <span className="text-xs font-bold uppercase tracking-wider">Design &amp; Motion Verification</span>
-          </div>
-
-          <p className="text-xs leading-relaxed opacity-80" style={{ color: colors.onSurfaceVariant }}>
-            Test exact Material 3 components across all states and verify spring physics with live interactors.
-          </p>
-
-          <div className="flex flex-col gap-2 pt-1">
-            <M3Button variant="tonal" shape="rounded" size="medium" className="w-full justify-between" onClick={onOpenGallery}>
-              <span>M3 Component Gallery (F-81)</span>
-              <span>→</span>
-            </M3Button>
-            <M3Button variant="tonal" shape="rounded" size="medium" className="w-full justify-between" onClick={onOpenMotionLab}>
-              <span>Motion Lab (F-82)</span>
-              <span>→</span>
-            </M3Button>
-          </div>
-
+          <span className="text-xs font-bold uppercase tracking-wider" style={{ color: colors.error }}>Danger zone</span>
           {onLogoutAll && (
             <div className="p-4 rounded-3xl border flex flex-col gap-2" style={{ backgroundColor: colors.surfaceContainerLowest, borderColor: colors.outlineVariant }}>
               <M3Button variant="destructive-filled" shape="capsule" size="large" className="w-full" onClick={() => { triggerHaptic('heavy'); void onLogoutAll(); }}>

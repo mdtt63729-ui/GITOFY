@@ -37,10 +37,10 @@ import { SettingsScreen } from './screens/SettingsScreen';
 import { CreateRepoSheet } from './screens/CreateRepoSheet';
 import { RepoPickerSheet } from './screens/RepoPickerSheet';
 import { M3UploadFlowScreen } from './screens/M3UploadFlowScreen';
-import { M3GalleryScreen } from './screens/M3GalleryScreen';
-import { MotionLabScreen } from './screens/MotionLabScreen';
 import { RepoActionResultScreen, RepoActionKind } from './screens/RepoActionResultScreen';
 import { OnboardingScreen } from './screens/OnboardingScreen';
+import { GitHubSettingsScreen } from './screens/GitHubSettingsScreen';
+import { RepoSettingsScreen } from './screens/RepoSettingsScreen';
 import { PageTransition, type NavDirection } from './ui/transitions/PageTransition';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import { AuthConfig, isGitHubApp } from './auth/config';
@@ -50,6 +50,7 @@ import { LoginDiagnosticsScreen } from './screens/LoginDiagnosticsScreen';
 import { AppLockScreen } from './screens/AppLockScreen';
 import { AccountSwitcherSheet } from './screens/AccountSwitcherSheet';
 import { SecurityOverlay } from './screens/security/SecurityOverlay';
+import { SigningInOverlay } from './components/SigningInOverlay';
 import { repoOwnerLogin, repoOwnerAvatar } from './utils/repo';
 
 /**
@@ -66,8 +67,8 @@ const SCREEN_DEPTH: Record<string, number> = {
   home: 1,
   inbox: 1,
   settings: 2,
-  m3_gallery: 2,
-  motion_lab: 2,
+  github_settings: 3,
+  repo_settings: 3,
   repo_dashboard: 2,
   zip_analysis: 3,
   upload: 3,
@@ -178,6 +179,20 @@ function GitofyApp() {
   useEffect(() => {
     prevScreenRef.current = currentScreen;
   }, [currentScreen]);
+
+  // A short, smooth "signing you in" panel the moment GitHub authorises the
+  // device flow — so the return from the browser resolves into a deliberate
+  // moment instead of a 2-3 s wait on a stalled screen.
+  const [signingIn, setSigningIn] = useState(false);
+  const wasAuthenticatedRef = useRef(session.isAuthenticated);
+  useEffect(() => {
+    const was = wasAuthenticatedRef.current;
+    wasAuthenticatedRef.current = session.isAuthenticated;
+    if (was || !session.isAuthenticated) return;
+    setSigningIn(true);
+    const t = window.setTimeout(() => setSigningIn(false), 900);
+    return () => window.clearTimeout(t);
+  }, [session.isAuthenticated]);
   // The FAB's own visibility, driven ONLY by scroll direction — it is no
   // longer tied to the bottom nav bar.
   const [fabVisible, setFabVisible] = useState(true);
@@ -710,6 +725,7 @@ function GitofyApp() {
             onOpenFiles={() => { setIsNavVisible(false); setCurrentScreen('repo_files'); }}
             onOpenCommits={() => { setIsNavVisible(false); setCurrentScreen('repo_commits'); }}
             onRunWorkflows={() => setCurrentScreen('workflows')}
+            onOpenRepoSettings={() => setCurrentScreen('repo_settings')}
             onDeleteRepo={() => {
               setSelectedRepoIds([selectedRepo.id]);
               setRepoActionRepo(selectedRepo);
@@ -911,8 +927,7 @@ function GitofyApp() {
           <SettingsScreen
             onBack={() => setCurrentScreen('home')}
             onTokenUpdated={loadRepositories}
-            onOpenGallery={() => setCurrentScreen('m3_gallery')}
-            onOpenMotionLab={() => setCurrentScreen('motion_lab')}
+            onOpenGitHubSettings={() => setCurrentScreen('github_settings')}
             onOpenPermissions={() => setCurrentScreen('permissions')}
             onOpenDiagnostics={() => setCurrentScreen('login_diagnostics')}
             accounts={accounts}
@@ -945,12 +960,23 @@ function GitofyApp() {
           <LoginDiagnosticsScreen onBack={() => setCurrentScreen('settings')} />
         )}
 
-        {currentScreen === 'm3_gallery' && (
-          <M3GalleryScreen onBack={() => setCurrentScreen('settings')} />
+        {currentScreen === 'github_settings' && (
+          <GitHubSettingsScreen
+            token={settings.personalAccessToken}
+            onBack={() => setCurrentScreen('settings')}
+            onSaved={() => { void loadRepositories(); }}
+          />
         )}
 
-        {currentScreen === 'motion_lab' && (
-          <MotionLabScreen onBack={() => setCurrentScreen('settings')} />
+        {currentScreen === 'repo_settings' && selectedRepo && (
+          <RepoSettingsScreen
+            repo={selectedRepo}
+            token={settings.personalAccessToken}
+            onBack={() => setCurrentScreen('repo_dashboard')}
+            onSaved={(patch) => {
+              setRepos((prev) => prev.map((r) => (r.id === selectedRepo.id ? { ...r, ...patch } : r)));
+            }}
+          />
         )}
       </PageTransition>
 
@@ -1046,6 +1072,9 @@ function GitofyApp() {
           <LoginScreen onLoggedIn={() => setShowAddAccount(false)} />
         </div>
       )}
+
+      {/* Smooth hand-off after an OTP sign-in */}
+      <SigningInOverlay visible={signingIn} />
 
       {/* Session ended — exactly one message (§7.3) */}
       <M3Dialog

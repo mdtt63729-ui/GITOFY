@@ -44,6 +44,70 @@ export async function runAllRepoWorkflows(
 }
 
 /** Does this workflow declare a `push` trigger? (then a push already ran it) */
+/**
+ * Will the push we just made start this workflow by itself?
+ *
+ * If yes we must NOT dispatch it too (that would run it twice). If no — a
+ * workflow that only listens for tag pushes, or for a different branch — the
+ * push cannot start it, so we dispatch it. Either way every workflow runs
+ * exactly once.
+ */
+
+/** Lines indented deeper than `indent` that follow line `startIdx`. */
+function indentedBlock(lines: string[], startIdx: number, indent: number): string {
+  const out: string[] = [];
+  for (let i = startIdx + 1; i < lines.length; i += 1) {
+    const line = lines[i];
+    if (!line.trim()) { out.push(line); continue; }
+    const lineIndent = line.length - line.trimStart().length;
+    if (lineIndent <= indent) break;
+    out.push(line);
+  }
+  return out.join('\n');
+}
+
+/** The trigger names declared under the top-level `on:` key. */
+function readTriggers(text: string): { onBody: string; triggers: string[] } | null {
+  const lines = text.split('\n');
+  let onIdx = -1;
+  let onIndent = 0;
+  for (let i = 0; i < lines.length; i += 1) {
+    const m = /^(\s*)on\s*:/.exec(lines[i]);
+    if (m) { onIdx = i; onIndent = m[1].length; break; }
+  }
+  if (onIdx < 0) return null;
+
+  const onBody = indentedBlock(lines, onIdx, onIndent);
+  const triggers: string[] = [];
+
+  // mapping style:  push:   /   workflow_dispatch:
+  for (const line of onBody.split('\n')) {
+    const key = /^\s*([A-Za-z_][\w-]*)\s*:/.exec(line);
+    if (key) triggers.push(key[1]);
+    // sequence style:  - push
+    const seq = /^\s*-\s*([A-Za-z_][\w-]*)\s*$/.exec(line);
+    if (seq) triggers.push(seq[1]);
+  }
+  // flow style:  on: [push, workflow_dispatch]
+  const flow = /\[([^\]]*)\]/.exec(onBody);
+  if (flow) {
+    flow[1].split(',').forEach((part) => {
+      const v = part.trim().replace(/["']/g, '');
+      if (v) triggers.push(v);
+    });
+  }
+  // single-line flow style on the `on:` line itself
+  const inline = /^[^\n]*on\s*:\s*\[([^\]]*)\]/.exec(lines[onIdx]);
+  if (inline) {
+    inline[1].split(',').forEach((part) => {
+      const v = part.trim().replace(/["']/g, '');
+      if (v) triggers.push(v);
+    });
+  }
+
+  return { onBody, triggers };
+}
+
 async function workflowListensForPush(
   owner: string,
   repo: string,
@@ -62,10 +126,35 @@ async function workflowListensForPush(
     const base64 = String(data?.content || '').replace(/\n/g, '');
     if (!base64) return false;
     const text = atob(base64);
-    // Only inspect the `on:` block — a `push:` key inside a step must not count.
-    const match = /(^|\n)on\s*:([\s\S]*?)(\n[A-Za-z_][\w-]*\s*:|$)/.exec(text);
-    const onBlock = match ? match[2] : text;
-    return /(^|[\s,[{-])push\s*:/.test(onBlock);
+
+    const parsed = readTriggers(text);
+    if (!parsed) return false; // cannot tell -> let the dispatch run it
+    if (!parsed.triggers.includes('push')) return false;
+
+    // `push:` is there — but does it cover the branch we just pushed?
+    const bodyLines = parsed.onBody.split('\n');
+    const pushIdx = bodyLines.findIndex((l) => /^\s*push\s*:/.test(l));
+    if (pushIdx < 0) return true; // flow / sequence style -> assume it covers us
+
+    const indent = bodyLines[pushIdx].length - bodyLines[pushIdx].trimStart().length;
+    const pushBody = indentedBlock(bodyLines, pushIdx, indent);
+
+    const tagsOnly = /(^|\n)\s*tags(-ignore)?\s*:/.test(pushBody);
+    const branchesMatch = /(^|\n)\s*branches(-ignore)?\s*:([\s\S]*)$/.exec(pushBody);
+    const branchesText = branchesMatch ? branchesMatch[3] : '';
+
+    if (branchesText) {
+      const list = branchesText.replace(/[[\]"']/g, ' ').split(/[,\s]+/).filter(Boolean);
+      const covers = list.some(
+        (b) => b === ref || b === '*' || (b.endsWith('*') && ref.startsWith(b.slice(0, -1)))
+      );
+      if (!covers) return false;
+    }
+
+    // A push filtered to tags only never fires on a branch push.
+    if (tagsOnly && !branchesText) return false;
+
+    return true;
   } catch {
     return false;
   }
@@ -1375,4 +1464,142 @@ export async function fetchRepoCommits(owner: string, repo: string, branch: stri
 export async function addRepoCommitComment(owner: string, repo: string, commitSha: string, body: string, path: string, line: number, token: string): Promise<void> {
   const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/commits/${commitSha}/comments`, { method: 'POST', headers: githubHeaders(token, true), body: JSON.stringify({ body, path, line: Math.max(1, line), side: 'RIGHT' }) });
   if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.message || `Could not post comment (${res.status}).`); }
+}
+
+/* ------------------------------------------------------------------ *
+ * GitHub account + repository settings (everything the API lets a user
+ * change from GitHub's own settings pages).
+ * ------------------------------------------------------------------ */
+
+export interface GitHubUserProfile {
+  login: string;
+  name: string | null;
+  bio: string | null;
+  company: string | null;
+  location: string | null;
+  blog: string | null;
+  twitter_username: string | null;
+  hireable: boolean | null;
+  email: string | null;
+  avatar_url: string;
+  public_repos: number;
+  followers: number;
+  following: number;
+}
+
+export async function fetchAuthenticatedUser(token: string): Promise<GitHubUserProfile> {
+  const res = await fetch('https://api.github.com/user', { headers: githubHeaders(token) });
+  if (!res.ok) throw new Error(`Could not load your GitHub profile (HTTP ${res.status}).`);
+  const d = await res.json();
+  return {
+    login: d.login,
+    name: d.name ?? null,
+    bio: d.bio ?? null,
+    company: d.company ?? null,
+    location: d.location ?? null,
+    blog: d.blog ?? null,
+    twitter_username: d.twitter_username ?? null,
+    hireable: typeof d.hireable === 'boolean' ? d.hireable : null,
+    email: d.email ?? null,
+    avatar_url: d.avatar_url ?? '',
+    public_repos: d.public_repos ?? 0,
+    followers: d.followers ?? 0,
+    following: d.following ?? 0,
+  };
+}
+
+/** PATCH /user — the same fields GitHub's own profile settings page edits. */
+export async function updateUserProfile(
+  token: string,
+  patch: Partial<Pick<GitHubUserProfile, 'name' | 'bio' | 'company' | 'location' | 'blog' | 'twitter_username' | 'hireable'>>
+): Promise<GitHubUserProfile> {
+  const res = await fetch('https://api.github.com/user', {
+    method: 'PATCH',
+    headers: githubHeaders(token, true),
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.message || `Could not save your profile (HTTP ${res.status}).`);
+  }
+  return fetchAuthenticatedUser(token);
+}
+
+export interface RepoEditableSettings {
+  description: string | null;
+  homepage: string | null;
+  private: boolean;
+  archived: boolean;
+  has_issues: boolean;
+  has_wiki: boolean;
+  has_projects: boolean;
+  has_downloads: boolean;
+  allow_squash_merge: boolean;
+  allow_merge_commit: boolean;
+  allow_rebase_merge: boolean;
+  default_branch: string;
+}
+
+function mapRepoSettings(d: Record<string, unknown>): RepoEditableSettings {
+  return {
+    description: (d.description as string) ?? null,
+    homepage: (d.homepage as string) ?? null,
+    private: Boolean(d.private),
+    archived: Boolean(d.archived),
+    has_issues: d.has_issues !== false,
+    has_wiki: d.has_wiki !== false,
+    has_projects: d.has_projects !== false,
+    has_downloads: d.has_downloads !== false,
+    allow_squash_merge: d.allow_squash_merge !== false,
+    allow_merge_commit: d.allow_merge_commit !== false,
+    allow_rebase_merge: d.allow_rebase_merge !== false,
+    default_branch: (d.default_branch as string) || 'main',
+  };
+}
+
+export async function fetchRepoEditableSettings(
+  owner: string,
+  repo: string,
+  token: string
+): Promise<RepoEditableSettings> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers: githubHeaders(token) });
+  if (!res.ok) throw new Error(`Could not load repository settings (HTTP ${res.status}).`);
+  return mapRepoSettings(await res.json());
+}
+
+/** PATCH /repos/{owner}/{repo} — description, visibility, features, archive, merge options. */
+export async function updateRepoEditableSettings(
+  owner: string,
+  repo: string,
+  token: string,
+  patch: Partial<RepoEditableSettings>
+): Promise<RepoEditableSettings> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+    method: 'PATCH',
+    headers: githubHeaders(token, true),
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.message || `Could not save repository settings (HTTP ${res.status}).`);
+  }
+  return mapRepoSettings(await res.json());
+}
+
+/** POST /repos/{owner}/{repo}/branches/{branch}/rename — GitHub's "rename branch". */
+export async function renameRepoBranch(
+  owner: string,
+  repo: string,
+  branch: string,
+  newName: string,
+  token: string
+): Promise<void> {
+  const res = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/branches/${encodeURIComponent(branch)}/rename`,
+    { method: 'POST', headers: githubHeaders(token, true), body: JSON.stringify({ new_name: newName }) }
+  );
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.message || `Could not rename the branch (HTTP ${res.status}).`);
+  }
 }

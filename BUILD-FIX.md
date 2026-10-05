@@ -682,3 +682,55 @@ Also:
    like every other link. The Web Flow switch was permanently disabled (no
    client secret is embedded) and just looked broken — it now shows a clear
    "Not available" state instead.
+
+## Every workflow runs exactly once — the detector was broken (this revision)
+
+The "run each workflow once" logic never actually worked. Its regexes had
+DOUBLED backslashes, so `/\\n/` looked for a literal backslash-then-n instead of
+a newline, and `/\\s/` for a literal backslash-then-s. Both regexes therefore
+never matched anything, `workflowListensForPush` always returned `false`, and
+EVERY workflow was dispatched — so any workflow that also listened for `push`
+ran twice (once from the commit, once from the dispatch).
+
+It is now an indentation-aware YAML trigger reader instead of one brittle
+regex, and it answers a sharper question: *will the push we just made start this
+workflow?*
+
+- `push:` with no filters, or `branches` covering the branch we pushed →
+  the push starts it, so we do NOT dispatch (runs once).
+- `push:` filtered to other branches, or to `tags:` only → the push cannot
+  start it, so we DO dispatch (runs once).
+- `workflow_dispatch` only → dispatch (runs once).
+- Handles all three YAML styles: `push:` (mapping), `[push, …]` (flow) and
+  `- push` (sequence).
+
+Verified against the project's own workflows and 9 synthetic cases (9/9 pass):
+`android-ci.yml` → push-triggered (skip dispatch), `bootstrap-signing.yml` →
+dispatch, `release-apk.yml` (tag-only push) → dispatch. So each runs once.
+
+## Settings cleanup + real GitHub settings + smooth sign-in (this revision)
+
+1. **Design & Motion Verification removed from the UI.** The "M3 Component
+   Gallery (F-81)" and "Motion Lab (F-82)" entries, their Settings card and
+   their screens are gone from the app (routes, imports, props and the
+   `AppScreen` union all dropped). The screens' files are left in the tree
+   unreferenced. **"Log out of all accounts" is kept** — it now lives in its own
+   "Danger zone" card.
+
+2. **Real GitHub settings, inside the app.**
+   - New **GitHub account settings** screen (`PATCH /user`): name, bio, company,
+     location, website, social account and "available for hire" — the same
+     fields as github.com/settings/profile. Reachable from Settings.
+   - New **Repository settings** screen (`PATCH /repos/{owner}/{repo}` plus
+     `POST /repos/{owner}/{repo}/branches/{branch}/rename`): description,
+     website, private/public visibility, Issues / Wikis / Projects / Downloads
+     toggles, the three merge options, **archive**, and renaming the default
+     branch. Reachable from a repository's ⋮ menu.
+   - New API helpers in `githubApi.ts`: `fetchAuthenticatedUser`,
+     `updateUserProfile`, `fetchRepoEditableSettings`,
+     `updateRepoEditableSettings`, `renameRepoBranch`.
+
+3. **A smooth "signing you in…" panel after GitHub authorises the device flow.**
+   Returning from the browser used to land on a stalled screen for a couple of
+   seconds. A full-screen panel now fades/scales in the moment the session
+   becomes authenticated, holds ~0.9 s, then fades out smoothly to reveal Home.

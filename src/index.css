@@ -1139,3 +1139,33 @@ html[data-ui-mode='nxt'] button[data-m3='icon-button'] {
 .gitofy-topbar {
   padding-top: max(12px, var(--gitofy-top-bar)) !important;
 }
+
+/* Signing-in panel shown briefly after GitHub authorises the device flow. */
+.gitofy-signin-mark {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  border-radius: 28px;
+  border: 2px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: gitofySignInIn 520ms cubic-bezier(0.16, 0.9, 0.28, 1) both;
+}
+@keyframes gitofySignInIn {
+  0% { opacity: 0; transform: scale(0.86); }
+  62% { opacity: 1; transform: scale(1.03); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.gitofy-signin-ring {
+  position: absolute;
+  inset: -10px;
+  border-radius: 999px;
+  border: 2px solid;
+  border-top-color: currentColor;
+  animation: gitofySignInSpin 900ms linear infinite;
+}
+@keyframes gitofySignInSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .gitofy-signin-mark, .gitofy-signin-ring { animation: none !important; }
+}
