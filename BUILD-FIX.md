@@ -734,3 +734,11 @@ dispatch, `release-apk.yml` (tag-only push) → dispatch. So each runs once.
    Returning from the browser used to land on a stalled screen for a couple of
    seconds. A full-screen panel now fades/scales in the moment the session
    becomes authenticated, holds ~0.9 s, then fades out smoothly to reveal Home.
+
+## Release list: APK upload time (this revision)
+
+Each release asset in "Releases & APKs" now shows when it was uploaded, not just
+its size and download count: `12.34 MB · 5 downloads · Uploaded 5 Oct 2026,
+6:57 pm`. It uses GitHub's `asset.created_at` (falling back to `updated_at`), so
+it reflects the real publish time of every APK — including the release APK.
+The release header now shows the publish date AND time too.

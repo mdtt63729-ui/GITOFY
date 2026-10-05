@@ -30,6 +30,28 @@ interface AssetDownloadState {
   errorMessage?: string;
 }
 
+/**
+ * The moment an asset was uploaded to GitHub (asset.created_at, falling back to
+ * updated_at). Shown in the release list so you can tell exactly when each APK
+ * was published, not just its size.
+ */
+function formatUploadTime(iso?: string): string {
+  if (!iso) return 'unknown';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return 'unknown';
+  try {
+    return d.toLocaleString(undefined, {
+      day: 'numeric',
+      month: 'short',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  } catch {
+    return d.toISOString().slice(0, 16).replace('T', ' ');
+  }
+}
+
 const GITHUB_LANG_COLORS: Record<string, string> = {
   Kotlin: '#A97BFF',
   Java: '#b07219',
@@ -866,7 +888,7 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
                       </div>
 
                       <span className="text-[10px] opacity-60 whitespace-nowrap">
-                        {new Date(rel.published_at || rel.created_at).toLocaleDateString()}
+                        {formatUploadTime(rel.published_at || rel.created_at)}
                       </span>
                     </div>
 
@@ -944,6 +966,13 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
                                       </div>
                                       <span className="text-[10px] opacity-60">
                                         {(asset.size / (1024 * 1024)).toFixed(2)} MB · {asset.download_count} downloads
+                                      </span>
+                                      <span className="text-[10px] opacity-60 flex items-center gap-1">
+                                        <svg className="w-3 h-3 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                          <circle cx="12" cy="12" r="9" />
+                                          <polyline points="12 7 12 12 15.5 14" />
+                                        </svg>
+                                        Uploaded {formatUploadTime(asset.created_at)}
                                       </span>
                                     </div>
                                   </div>
