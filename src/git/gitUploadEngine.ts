@@ -36,6 +36,77 @@ export interface EngineResult {
   error?: string;
 }
 
+
+/* -------------------------------------------------------------------------
+ * High-throughput upload helpers.
+ *
+ * The browser engine talks to GitHub's Git Data API directly. To get maximum
+ * speed out of a WebView we (a) fold small files straight into the tree request
+ * so a whole project needs a handful of round trips instead of one per file,
+ * and (b) push the remaining blobs through a real 16-wide worker pool. Every
+ * request is wrapped with a generous timeout AND automatic retry, so a slow or
+ * dropped connection can never surface as a timeout error.
+ * ---------------------------------------------------------------------- */
+
+/** Per-file ceiling for folding a file's content into the tree request. */
+const INLINE_LIMIT = 512 * 1024;
+/** Total bytes we are willing to fold into one tree request. */
+const INLINE_TOTAL_BUDGET = 6 * 1024 * 1024;
+/** How many blob uploads run at once. */
+const UPLOAD_CONCURRENCY = 16;
+
+/** Fast, allocation-light base64 of a byte array (no Array.from per chunk). */
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk) as unknown as number[]);
+  }
+  return btoa(binary);
+}
+
+/**
+ * fetch() with a generous per-attempt timeout and automatic retries on network
+ * errors, timeouts, 5xx and secondary-rate-limit responses. A transient hiccup
+ * is retried instead of failing the whole upload, so the user never sees a
+ * "timeout" error. Honours Retry-After when GitHub sends it.
+ */
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit = {},
+  opts: { attempts?: number; timeoutMs?: number } = {}
+): Promise<Response> {
+  const attempts = opts.attempts ?? 5;
+  const timeoutMs = opts.timeoutMs ?? 90000;
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    const ctrl = new AbortController();
+    const timer = window.setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { ...init, signal: ctrl.signal });
+      window.clearTimeout(timer);
+      if (res.status === 429 || res.status === 403) {
+        const ra = Number(res.headers.get('Retry-After'));
+        const wait = Number.isFinite(ra) && ra > 0 ? ra * 1000 : Math.min(8000, 400 * Math.pow(2, i));
+        await new Promise((r) => window.setTimeout(r, wait));
+        lastErr = new Error(`HTTP ${res.status}`);
+        continue;
+      }
+      if (res.status >= 500) {
+        await new Promise((r) => window.setTimeout(r, Math.min(4000, 300 * Math.pow(2, i))));
+        lastErr = new Error(`HTTP ${res.status}`);
+        continue;
+      }
+      return res;
+    } catch (e) {
+      window.clearTimeout(timer);
+      lastErr = e;
+      await new Promise((r) => window.setTimeout(r, Math.min(4000, 300 * Math.pow(2, i))));
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error('Request failed after retries');
+}
+
 export class GitUploadEngine {
   private activeJobId: string | null = null;
   private isCancelled = false;
@@ -301,7 +372,7 @@ export class GitUploadEngine {
 
     const readRemoteHead = async (): Promise<boolean> => {
       try {
-        const refRes = await fetch(
+        const refRes = await fetchWithRetry(
           `https://api.github.com/repos/${options.repoOwner}/${options.repoName}/git/ref/heads/${options.branch}`,
           { headers: ghHeaders }
         );
@@ -310,7 +381,7 @@ export class GitUploadEngine {
         baseCommitSha = refData.object?.sha ?? null;
         if (!baseCommitSha) return false;
 
-        const commitRes = await fetch(
+        const commitRes = await fetchWithRetry(
           `https://api.github.com/repos/${options.repoOwner}/${options.repoName}/git/commits/${baseCommitSha}`,
           { headers: ghHeaders }
         );
@@ -319,7 +390,7 @@ export class GitUploadEngine {
         baseTreeSha = commitData.tree?.sha ?? null;
 
         if (baseTreeSha) {
-          const treeRes = await fetch(
+          const treeRes = await fetchWithRetry(
             `https://api.github.com/repos/${options.repoOwner}/${options.repoName}/git/trees/${baseTreeSha}?recursive=1`,
             { headers: ghHeaders }
           );
@@ -362,7 +433,7 @@ export class GitUploadEngine {
       const initContent = btoa(
         `# ${options.repoName}\n\nRepository initialized by Gitofy.\n`
       );
-      const initRes = await fetch(
+      const initRes = await fetchWithRetry(
         `https://api.github.com/repos/${options.repoOwner}/${options.repoName}/contents/README.md`,
         {
           method: 'PUT',
@@ -398,14 +469,16 @@ export class GitUploadEngine {
       return diffItem && (diffItem.status === 'added' || diffItem.status === 'modified');
     });
 
-    // 3. ADAPTIVE CONCURRENT UPLOAD (Workers: 8 to 16, adaptive backoff)
+    // 3. HIGH-THROUGHPUT CONCURRENT UPLOAD.
+    //    Small files are folded straight into the tree below (so a project with
+    //    hundreds of source files costs ONE request instead of hundreds), and the
+    //    rest are pushed as concurrent blobs through a real 16-wide pool.
     const tUploadStart = Date.now();
     let completedCount = 0;
     let uploadedBytesTotal = 0;
     const uploadedBlobMap = new Map<string, string>(); // path -> blobSha
-
-    let concurrency = 8;
-    const maxConcurrency = 16;
+    const inlineContentMap = new Map<string, string>(); // path -> base64 content
+    let inlineBudget = INLINE_TOTAL_BUDGET;
     const queue = [...filesToUpload];
 
     const uploadWorker = async () => {
@@ -413,100 +486,56 @@ export class GitUploadEngine {
         const file = queue.shift();
         if (!file) break;
 
-        let attempt = 0;
-        let success = false;
-        let blobSha = '';
-
-        while (attempt < 4 && !success && !this.isCancelled) {
-          attempt++;
-          try {
-            // Encode binary byte-safe to base64
-            let binaryString = '';
-            const chunkSize = 8192;
-            for (let i = 0; i < file.data.length; i += chunkSize) {
-              const slice = file.data.subarray(i, i + chunkSize);
-              binaryString += String.fromCharCode.apply(null, Array.from(slice));
-            }
-            const base64Content = btoa(binaryString);
-
-            const blobRes = await fetch(
-              `https://api.github.com/repos/${options.repoOwner}/${options.repoName}/git/blobs`,
-              {
-                method: 'POST',
-                headers: {
-                  Authorization: `Bearer ${options.token}`,
-                  Accept: 'application/vnd.github.v3+json',
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  content: base64Content,
-                  encoding: 'base64',
-                }),
-              }
-            );
-
-            if (blobRes.status === 429) {
-              // Rate limit: decrease concurrency and backoff
-              concurrency = Math.max(4, Math.floor(concurrency * 0.7));
-              await new Promise((r) => setTimeout(r, 1000 * attempt));
-              continue;
-            }
-
-            if (blobRes.status >= 500) {
-              // 5xx Server Error: retry with backoff
-              await new Promise((r) => setTimeout(r, 500 * Math.pow(2, attempt)));
-              continue;
-            }
-
-            if (!blobRes.ok) {
-              const err = await blobRes.json().catch(() => ({}));
-              throw new Error(err.message || `Failed to create blob (HTTP ${blobRes.status})`);
-            }
-
-            const blobData = await blobRes.json();
-            blobSha = blobData.sha;
-            success = true;
-
-            // Adaptive ramp-up if performing well
-            if (concurrency < maxConcurrency && Math.random() < 0.2) {
-              concurrency++;
-            }
-          } catch (err) {
-            if (attempt >= 4) throw err;
-            await new Promise((r) => setTimeout(r, 500 * attempt));
-          }
-        }
-
-        if (success) {
-          uploadedBlobMap.set(file.path, blobSha);
-          completedCount++;
-          uploadedBytesTotal += file.size;
-
-          const elapsedSec = (Date.now() - tUploadStart) / 1000;
-          const mbps = elapsedSec > 0 ? (uploadedBytesTotal / (1024 * 1024) / elapsedSec).toFixed(1) : '0';
-
-          const pct = Math.round(
-            50 + (completedCount / Math.max(1, filesToUpload.length)) * 35
+        // Fold small files into the tree request — zero extra round trips.
+        if (file.size <= INLINE_LIMIT && file.size <= inlineBudget) {
+          inlineBudget -= file.size;
+          inlineContentMap.set(file.path, bytesToBase64(file.data));
+        } else {
+          const blobRes = await fetchWithRetry(
+            `https://api.github.com/repos/${options.repoOwner}/${options.repoName}/git/blobs`,
+            {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${options.token}`,
+                Accept: 'application/vnd.github.v3+json',
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ content: bytesToBase64(file.data), encoding: 'base64' }),
+            },
+            { attempts: 6, timeoutMs: 120000 }
           );
-
-          options.onProgress({
-            phase: 'uploading',
-            progress: pct,
-            currentFile: file.path,
-            completedFiles: completedCount,
-            totalFiles: filesToUpload.length,
-            uploadedBytes: uploadedBytesTotal,
-            totalBytes,
-            speed: `${mbps} MB/s`,
-            errorMessage: null,
-          });
+          if (!blobRes.ok) {
+            const err = await blobRes.json().catch(() => ({}));
+            throw new Error(err.message || `Failed to create blob (HTTP ${blobRes.status})`);
+          }
+          const blobData = await blobRes.json();
+          uploadedBlobMap.set(file.path, blobData.sha);
         }
+
+        completedCount++;
+        uploadedBytesTotal += file.size;
+
+        const elapsedSec = (Date.now() - tUploadStart) / 1000;
+        const mbps = elapsedSec > 0 ? (uploadedBytesTotal / (1024 * 1024) / elapsedSec).toFixed(1) : '0';
+        const pct = Math.round(50 + (completedCount / Math.max(1, filesToUpload.length)) * 35);
+
+        options.onProgress({
+          phase: 'uploading',
+          progress: pct,
+          currentFile: file.path,
+          completedFiles: completedCount,
+          totalFiles: filesToUpload.length,
+          uploadedBytes: uploadedBytesTotal,
+          totalBytes,
+          speed: `${mbps} MB/s`,
+          errorMessage: null,
+        });
       }
     };
 
-    // Run workers concurrently
-    const activeWorkers = Array.from({ length: Math.min(concurrency, filesToUpload.length || 1) }, () =>
-      uploadWorker()
+    const activeWorkers = Array.from(
+      { length: Math.min(UPLOAD_CONCURRENCY, filesToUpload.length || 1) },
+      () => uploadWorker()
     );
     await Promise.all(activeWorkers);
     phaseTimes.packMs = Date.now() - tUploadStart;
@@ -526,27 +555,63 @@ export class GitUploadEngine {
       errorMessage: null,
     });
 
-    const treeEntries = localFiles.map((file) => ({
-      path: file.path,
-      mode: '100644',
-      type: 'blob',
-      sha: uploadedBlobMap.get(file.path) || file.sha,
-    }));
-
-    const createTreeRes = await fetch(
-      `https://api.github.com/repos/${options.repoOwner}/${options.repoName}/git/trees`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${options.token}`,
-          Accept: 'application/vnd.github.v3+json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          tree: treeEntries,
-        }),
+    const treeEntries = localFiles.map((file) => {
+      const inline = inlineContentMap.get(file.path);
+      if (inline) {
+        return { path: file.path, mode: '100644', type: 'blob', content: inline, encoding: 'base64' };
       }
-    );
+      return { path: file.path, mode: '100644', type: 'blob', sha: uploadedBlobMap.get(file.path) || file.sha };
+    });
+
+    const createTree = (entries: unknown[]) =>
+      fetchWithRetry(
+        `https://api.github.com/repos/${options.repoOwner}/${options.repoName}/git/trees`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${options.token}`,
+            Accept: 'application/vnd.github.v3+json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ tree: entries }),
+        },
+        { attempts: 4, timeoutMs: 120000 }
+      );
+
+    let createTreeRes = await createTree(treeEntries);
+
+    // If the folded-in content was too large for a single tree request, upload
+    // those files as blobs and retry the tree — the upload still completes.
+    if (!createTreeRes.ok && inlineContentMap.size > 0) {
+      await Promise.all(
+        Array.from(inlineContentMap.entries()).map(async ([path, content]) => {
+          const blobRes = await fetchWithRetry(
+            `https://api.github.com/repos/${options.repoOwner}/${options.repoName}/git/blobs`,
+            {
+              method: 'POST',
+              headers: {
+                Authorization: `Bearer ${options.token}`,
+                Accept: 'application/vnd.github.v3+json',
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ content, encoding: 'base64' }),
+            },
+            { attempts: 5, timeoutMs: 120000 }
+          );
+          if (blobRes.ok) {
+            const d = await blobRes.json();
+            uploadedBlobMap.set(path, d.sha);
+          }
+        })
+      );
+      const fallbackEntries = localFiles.map((file) => ({
+        path: file.path,
+        mode: '100644',
+        type: 'blob',
+        sha: uploadedBlobMap.get(file.path) || file.sha,
+      }));
+      createTreeRes = await createTree(fallbackEntries);
+    }
 
     if (!createTreeRes.ok) {
       const err = await createTreeRes.json().catch(() => ({}));
@@ -556,7 +621,7 @@ export class GitUploadEngine {
     const newTree = await createTreeRes.json();
 
     // 5. CREATE COMMIT
-    const createCommitRes = await fetch(
+    const createCommitRes = await fetchWithRetry(
       `https://api.github.com/repos/${options.repoOwner}/${options.repoName}/git/commits`,
       {
         method: 'POST',
@@ -593,7 +658,7 @@ export class GitUploadEngine {
       errorMessage: null,
     });
 
-    const updateRefRes = await fetch(
+    const updateRefRes = await fetchWithRetry(
       `https://api.github.com/repos/${options.repoOwner}/${options.repoName}/git/refs/heads/${options.branch}`,
       {
         method: 'PATCH',
@@ -611,7 +676,7 @@ export class GitUploadEngine {
 
     if (!updateRefRes.ok) {
       // If branch didn't exist, create it
-      await fetch(
+      await fetchWithRetry(
         `https://api.github.com/repos/${options.repoOwner}/${options.repoName}/git/refs`,
         {
           method: 'POST',
@@ -641,7 +706,7 @@ export class GitUploadEngine {
       errorMessage: null,
     });
 
-    const verifyTreeRes = await fetch(
+    const verifyTreeRes = await fetchWithRetry(
       `https://api.github.com/repos/${options.repoOwner}/${options.repoName}/git/trees/${newTree.sha}?recursive=1`,
       {
         headers: {

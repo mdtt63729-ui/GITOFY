@@ -60,30 +60,36 @@ export async function processZipFile(
     }
   }
 
+  // Extract + SHA-1 in parallel: the zip reads and the WebCrypto digests are
+  // async, so running them 16-wide turns a big project's many files from a long
+  // sequential chain into a single overlapped batch.
   const results: ExtractedFile[] = [];
-  for (const { path, entry } of effectiveEntries) {
-    const data = await entry.async('uint8array');
-    const sha = await calculateGitBlobSha(data);
+  const queue = [...effectiveEntries];
+  const worker = async () => {
+    for (;;) {
+      const item = queue.shift();
+      if (!item) return;
+      const { path, entry } = item;
+      const data = await entry.async('uint8array');
+      const sha = await calculateGitBlobSha(data);
 
-    let text: string | undefined = undefined;
-    // Attempt utf-8 decoding for readable text files (code, json, markdown)
-    const isText = /\.(ts|tsx|js|jsx|json|md|txt|html|css|py|kt|java|xml|yml|yaml|gradle)$/i.test(path);
-    if (isText && data.byteLength < 500000) {
-      try {
-        text = new TextDecoder('utf-8', { fatal: true }).decode(data);
-      } catch {
-        text = undefined;
+      let text: string | undefined = undefined;
+      // Attempt utf-8 decoding for readable text files (code, json, markdown)
+      const isText = /\.(ts|tsx|js|jsx|json|md|txt|html|css|py|kt|java|xml|yml|yaml|gradle)$/i.test(path);
+      if (isText && data.byteLength < 500000) {
+        try {
+          text = new TextDecoder('utf-8', { fatal: true }).decode(data);
+        } catch {
+          text = undefined;
+        }
       }
-    }
 
-    results.push({
-      path,
-      data,
-      text,
-      size: data.byteLength,
-      sha,
-    });
-  }
+      results.push({ path, data, text, size: data.byteLength, sha });
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(16, effectiveEntries.length || 1) }, () => worker())
+  );
 
   return results;
 }
