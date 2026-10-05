@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useT } from '../../i18n/strings';
 import { M3Dark, M3Danger } from './palette';
 import { SheetPrimaryButton, SheetProgress } from './sheetUi';
@@ -38,12 +38,39 @@ const DownloadGlyph: React.FC = () => (
   </svg>
 );
 
+/**
+ * Force-closes the app. On device this calls the native bridge (finishAffinity),
+ * so a modified build really exits; in a plain browser there is nothing to call.
+ */
+function forceClose(): void {
+  const b = (window as unknown as { GitofyAndroid?: { exitApp?: () => void } }).GitofyAndroid;
+  try { b?.exitApp?.(); } catch { /* ignore */ }
+}
+
 export const DangerSheet: React.FC<DangerSheetProps> = ({ phase, progress, received, total, speedBps, error, onDownload, onContinue }) => {
   const t = useT();
 
   const busy = phase === 'downloading' || phase === 'installing';
   const pct = Math.max(0, Math.min(100, Math.round(progress)));
   const showContinue = phase === 'error' && !!onContinue;
+
+  // A modified build is force-closed after a 7-second countdown — every time it
+  // is opened, however many times that is.
+  const [remaining, setRemaining] = useState(7);
+  useEffect(() => {
+    setRemaining(7);
+    const id = window.setInterval(() => {
+      setRemaining((r) => {
+        if (r <= 1) {
+          window.clearInterval(id);
+          forceClose();
+          return 0;
+        }
+        return r - 1;
+      });
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
     startDangerSound();
@@ -128,6 +155,10 @@ export const DangerSheet: React.FC<DangerSheetProps> = ({ phase, progress, recei
             <span className="gdanger-chip-dot" />
             <span>{t('sec.unofficial.badge')}</span>
           </div>
+
+          <p className="mt-2.5 text-[12px] font-black tracking-wide" style={{ color: M3Danger.danger }}>
+            {t('sec.unofficial.closing', { seconds: remaining })}
+          </p>
 
           {error && phase === 'error' && (
             <p className="text-[11px] font-bold mt-2" style={{ color: M3Danger.danger }}>

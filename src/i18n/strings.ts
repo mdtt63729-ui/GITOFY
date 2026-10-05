@@ -119,8 +119,9 @@ const en: Dict = {
 
   'sec.unofficial.badge': 'Security risk detected',
   'sec.unofficial.topbar': 'Unofficial App',
-  'sec.unofficial.title': 'This is an unofficial app',
-  'sec.unofficial.subtitle': "You're using a modified version. For your safety, please download the official app.",
+  'sec.unofficial.title': 'This is modified version',
+  'sec.unofficial.subtitle': 'Please download our app clicking on the download button.',
+  'sec.unofficial.closing': 'Closing in {seconds}s',
   'sec.downloadOfficial': 'Download Official App',
   'sec.update.title': 'A new version is ready',
   'sec.update.subtitle': 'Enjoy the latest improvements, bug fixes, and performance upgrades.',
@@ -244,8 +245,9 @@ const bn: Dict = {
 
   'sec.unofficial.badge': 'নিরাপত্তা ঝুঁকি শনাক্ত হয়েছে',
   'sec.unofficial.topbar': 'আনঅফিসিয়াল অ্যাপ',
-  'sec.unofficial.title': 'এটি একটি আনঅফিসিয়াল অ্যাপ',
-  'sec.unofficial.subtitle': 'আপনি একটি পরিবর্তিত ভার্সন ব্যবহার করছেন। আপনার নিরাপত্তার জন্য, অনুগ্রহ করে অফিসিয়াল অ্যাপটি ডাউনলোড করুন।',
+  'sec.unofficial.title': 'এটি একটি পরিবর্তিত (modified) ভার্সন',
+  'sec.unofficial.subtitle': 'অনুগ্রহ করে ডাউনলোড বাটনে ক্লিক করে আমাদের অ্যাপ ডাউনলোড করুন।',
+  'sec.unofficial.closing': '{seconds} সেকেন্ডে বন্ধ হচ্ছে',
   'sec.downloadOfficial': 'অফিসিয়াল অ্যাপ ডাউনলোড করুন',
   'sec.update.title': 'একটি নতুন ভার্সন তৈরি',
   'sec.update.subtitle': 'সর্বশেষ উন্নতি, বাগ ফিক্স ও পারফরম্যান্স আপগ্রেড উপভোগ করুন।',

@@ -1044,6 +1044,19 @@ button, input, select, textarea { font-family: var(--gitofy-font); }
   .gitofy-drop-in { animation: none !important; }
 }
 
+/* App Store: opening an app card expands into the detail page with a springy
+   fade + rise, so a tap never snaps to the new page with no motion. */
+@keyframes gitofyAppOpen {
+  0% { opacity: 0; transform: translateY(22px) scale(.965); }
+  62% { opacity: 1; transform: translateY(-2px) scale(1.002); }
+  100% { opacity: 1; transform: none; }
+}
+.gitofy-app-open { animation: gitofyAppOpen 340ms cubic-bezier(.2, .9, .28, 1) both; will-change: transform, opacity; }
+
+@media (prefers-reduced-motion: reduce) {
+  .gitofy-app-open { animation: none !important; }
+}
+
 /* ------------------------------------------------------------------
  * Onboarding entrance: the carousel slides up into place with a springy
  * overshoot, then the dots and the action buttons rise in just behind it.

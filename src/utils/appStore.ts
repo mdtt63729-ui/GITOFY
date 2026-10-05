@@ -229,3 +229,68 @@ export function formatAppSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
+
+/* --------------------------- screenshots --------------------------- */
+
+function b64ToUtf8(b64: string): string {
+  try {
+    const bin = atob(b64.replace(/\s/g, ''));
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    return new TextDecoder('utf-8').decode(bytes);
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Pull image URLs out of a README (both markdown `![](...)` and HTML `<img>`),
+ * resolved to absolute URLs against `base`. Badges/shields are skipped — they are
+ * not screenshots.
+ */
+export function extractReadmeImages(markdown: string, base: string): string[] {
+  const out = new Set<string>();
+  const push = (raw: string) => {
+    let s = raw.trim().replace(/^<|>$/g, '');
+    if (!s) return;
+    if (/shields\.io|badge|\/actions\/workflows\/.*\/badge/i.test(s)) return;
+    if (s.startsWith('//')) s = `https:${s}`;
+    else if (!/^https?:\/\//i.test(s)) {
+      try { s = new URL(s, base).toString(); } catch { return; }
+    }
+    if (/\.(png|jpe?g|webp|gif)(\?.*)?$/i.test(s) || /user-images\.githubusercontent\.com|raw\.githubusercontent\.com/i.test(s)) {
+      out.add(s);
+    }
+  };
+
+  for (const m of markdown.match(/!\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g) ?? []) {
+    const inner = m.match(/\]\(([^)\s]+)/);
+    if (inner) push(inner[1]);
+  }
+  for (const m of markdown.match(/<img[^>]+src=["']([^"']+)["']/gi) ?? []) {
+    const inner = m.match(/src=["']([^"']+)["']/i);
+    if (inner) push(inner[1]);
+  }
+  return Array.from(out).slice(0, 8);
+}
+
+/**
+ * Screenshots for an app detail page: the images embedded in the repository's
+ * README. Returns an empty array when there is no README or no usable images —
+ * the caller shows a placeholder carousel in that case.
+ */
+export async function fetchRepoScreenshots(owner: string, repo: string, token: string): Promise<string[]> {
+  try {
+    const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/readme`, {
+      headers: githubHeaders(token),
+    });
+    if (!res.ok) return [];
+    const data = await res.json();
+    const content = typeof data?.content === 'string' ? data.content : '';
+    if (!content) return [];
+    const text = b64ToUtf8(content);
+    if (!text) return [];
+    return extractReadmeImages(text, `https://raw.githubusercontent.com/${owner}/${repo}/HEAD/`);
+  } catch {
+    return [];
+  }
+}

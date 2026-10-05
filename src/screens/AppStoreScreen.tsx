@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme } from '../ui/ThemeContext';
-import { M3Button } from '../ui/m3/M3Button';
 import { M3IconButton } from '../ui/m3/M3IconButton';
 import { AppIconProgress } from '../ui/AppIconProgress';
 import { SkeletonRows } from '../ui/m3/SkeletonRows';
@@ -10,6 +9,7 @@ import { useApkDownload, formatSpeed } from '../hooks/useApkDownload';
 import {
   searchStoreApps, myReposAsApps, enrichWithApks, getLibrary, addToLibrary,
   removeFromLibrary, getHistory, pushHistory, clearHistory, formatAppSize,
+  fetchRepoScreenshots,
   type StoreApp, type LibraryApp,
 } from '../utils/appStore';
 
@@ -25,7 +25,7 @@ type Mode = 'store' | 'library' | 'mine';
 
 const MODES: { id: Mode; label: string; hint: string }[] = [
   { id: 'store', label: 'Store', hint: 'Installable apps across GitHub' },
-  { id: 'library', label: 'Library', hint: 'Apps you have downloaded' },
+  { id: 'library', label: 'Library', hint: 'Your downloads and your repositories' },
   { id: 'mine', label: 'My repos', hint: 'Your repositories and the apps in them' },
 ];
 
@@ -49,6 +49,7 @@ export const AppStoreScreen: React.FC<Props> = ({ token, username, repos, onRequ
   const [history, setHistory] = useState<string[]>(() => getHistory());
   const [detail, setDetail] = useState<StoreApp | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [shots, setShots] = useState<string[]>([]);
 
   const enrichToken = useRef<{ cancelled: boolean }>({ cancelled: true });
   const refreshLibrary = useCallback(() => setLibrary(getLibrary()), []);
@@ -134,11 +135,31 @@ export const AppStoreScreen: React.FC<Props> = ({ token, username, repos, onRequ
     return () => { window.clearTimeout(timer); signal.cancelled = true; };
   }, [query, mode, token, repos]);
 
+  // Load screenshots (images embedded in the repo README) for the open detail page.
+  useEffect(() => {
+    if (!detail) { setShots([]); return; }
+    let cancelled = false;
+    setShots([]);
+    fetchRepoScreenshots(detail.owner, detail.name, token)
+      .then((list) => { if (!cancelled) setShots(list); })
+      .catch(() => { if (!cancelled) setShots([]); });
+    return () => { cancelled = true; };
+  }, [detail, token]);
+
   const libraryMatches = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return library;
     return library.filter((a) => a.name.toLowerCase().includes(q) || a.owner.toLowerCase().includes(q) || a.description.toLowerCase().includes(q));
   }, [library, query]);
+
+  // Library mode also searches your OWN repositories (not just downloaded apps),
+  // so selecting the book/library mode and typing finds your repos too.
+  const libraryRepoMatches = useMemo(() => {
+    if (mode !== 'library') return [];
+    const q = query.trim();
+    if (!q) return [];
+    return myReposAsApps(repos, q);
+  }, [mode, query, repos]);
 
   const results = mode === 'store' ? storeResults : mode === 'mine' ? mineResults : [];
 
@@ -165,90 +186,150 @@ export const AppStoreScreen: React.FC<Props> = ({ token, username, repos, onRequ
 
   /* ---------------------------- detail ---------------------------- */
 
+  const infoRow = (label: string, value: string, mono = false) => (
+    <div className="flex items-start justify-between gap-4 text-xs">
+      <span style={{ color: colors.onSurfaceVariant }}>{label}</span>
+      <span className={`text-right font-semibold truncate ${mono ? 'font-mono' : ''}`} style={{ color: colors.onSurface, maxWidth: '62%' }}>{value}</span>
+    </div>
+  );
+
   if (detail) {
     const isDownloading = download.state.status === 'downloading';
     const progress = isDownloading ? download.state.percent / 100 : download.state.status === 'done' ? 1 : undefined;
     return (
-      <div className="flex-1 flex flex-col gitofy-scroll select-none" style={{ backgroundColor: colors.background }}>
+      <div className="flex-1 min-h-0 flex flex-col gitofy-scroll select-none gitofy-app-open" style={{ backgroundColor: colors.background }}>
+        {/* Top bar */}
         <div className="sticky top-0 z-30 px-3 py-3 border-b gitofy-topbar flex items-center gap-2" style={{ backgroundColor: `${colors.surface}f5`, borderColor: colors.outlineVariant }}>
           <M3IconButton aria-label="Back to results" onClick={() => { download.reset(); setDetail(null); }}>
             <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
           </M3IconButton>
           <div className="text-sm font-black flex-1 truncate">{detail.name}</div>
+          <M3IconButton aria-label="Open on GitHub" onClick={() => openExternal(detail.htmlUrl)}>
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" /><polyline points="15 3 21 3 21 9" /><line x1="10" y1="14" x2="21" y2="3" /></svg>
+          </M3IconButton>
         </div>
 
-        <div className="p-5 pb-28 flex flex-col gap-4">
-          <div className="p-5 rounded-3xl border flex items-center gap-4" style={card}>
-            <AppIconProgress
-              src={detail.ownerAvatar || undefined}
-              label={detail.name}
-              size={78}
-              progress={progress}
-              caption={isDownloading ? formatSpeed(download.state.speedBps) : undefined}
-            />
-            <div className="min-w-0 flex-1">
-              <div className="text-base font-black leading-tight truncate">{detail.name}</div>
-              <div className="text-[11px] opacity-70 truncate">{detail.owner}</div>
-              <div className="flex items-center gap-2 mt-1.5 text-[11px] font-bold" style={{ color: colors.onSurfaceVariant }}>
-                {detail.version && <span className="px-2 py-0.5 rounded-full" style={{ backgroundColor: colors.secondaryContainer, color: colors.onSecondaryContainer }}>{detail.version}</span>}
-                {detail.stars > 0 && (
-                  <span className="flex items-center gap-1">
-                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
-                    {detail.stars}
-                  </span>
-                )}
-              </div>
+        {/* Hero: icon + identity */}
+        <div className="px-5 pt-4 pb-2 flex items-center gap-4">
+          <AppIconProgress
+            src={detail.ownerAvatar || undefined}
+            label={detail.name}
+            size={86}
+            progress={progress}
+            caption={isDownloading ? formatSpeed(download.state.speedBps) : undefined}
+          />
+          <div className="min-w-0 flex-1">
+            <div className="text-lg font-black leading-tight truncate">{detail.name}</div>
+            <div className="text-[11px] opacity-70 truncate">{detail.owner}</div>
+            <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[11px] font-bold" style={{ color: colors.onSurfaceVariant }}>
+              {detail.version && <span className="px-2 py-0.5 rounded-full" style={{ backgroundColor: colors.secondaryContainer, color: colors.onSecondaryContainer }}>{detail.version}</span>}
+              {detail.language && <span className="opacity-80">{detail.language}</span>}
+              {detail.stars > 0 && (
+                <span className="flex items-center gap-1">
+                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>
+                  {detail.stars}
+                </span>
+              )}
             </div>
           </div>
+        </div>
 
-          {detail.description && (
-            <div className="p-5 rounded-3xl border" style={card}>
-              <p className="text-xs leading-relaxed opacity-90">{detail.description}</p>
+        {/* Install row (Play Store style) */}
+        <div className="px-5 py-2 flex items-center gap-2">
+          <button
+            type="button"
+            disabled={!detail.apkUrl || isDownloading}
+            onClick={() => install(detail)}
+            className="flex-1 h-11 rounded-full text-sm font-black cursor-pointer active:scale-[0.99] transition-transform disabled:opacity-50 flex items-center justify-center gap-2"
+            style={{ backgroundColor: colors.primary, color: colors.onPrimary }}
+          >
+            {isDownloading ? (
+              <span>{Math.round(download.state.percent)}%</span>
+            ) : (
+              <>
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" /></svg>
+                {download.state.status === 'done' ? 'Download again' : 'Install'}
+              </>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => openExternal(detail.htmlUrl)}
+            className="h-11 px-5 rounded-full text-sm font-bold cursor-pointer active:scale-[0.99] transition-transform border"
+            style={{ borderColor: colors.outlineVariant, color: colors.primary, backgroundColor: 'transparent' }}
+          >
+            GitHub ↗
+          </button>
+        </div>
+
+        {detail.checked && !detail.installable && (
+          <div className="px-5 pb-1">
+            <p className="text-[11px] opacity-75">This repository does not publish an APK on its releases, so there is nothing to install.</p>
+          </div>
+        )}
+
+        {isDownloading && (
+          <div className="px-5 pb-2 flex flex-col gap-1.5">
+            <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: colors.surfaceContainerHighest }}>
+              <div className="h-full rounded-full" style={{ width: `${download.state.percent}%`, backgroundColor: colors.primary, transition: 'width 200ms linear' }} />
+            </div>
+            <span className="text-[10px] font-mono opacity-70">
+              {formatAppSize(download.state.received)} / {formatAppSize(download.state.total)} · {formatSpeed(download.state.speedBps)}
+            </span>
+          </div>
+        )}
+        {download.state.status === 'done' && (
+          <div className="px-5 pb-1"><p className="text-xs font-bold" style={{ color: colors.diffAdded }}>✓ Downloaded — the installer should be open</p></div>
+        )}
+        {download.state.status === 'error' && (
+          <div className="px-5 pb-1"><p className="text-xs font-semibold" style={{ color: colors.error }}>{download.state.error}</p></div>
+        )}
+
+        {/* Screenshots (Play Store carousel) */}
+        <div className="pt-3 pb-1">
+          <span className="px-5 text-xs font-bold uppercase tracking-wider" style={{ color: colors.onSurfaceVariant }}>Screenshots</span>
+          {shots.length > 0 ? (
+            <div className="flex gap-3 overflow-x-auto px-5 py-3 scrollbar-none" style={{ scrollSnapType: 'x mandatory' }}>
+              {shots.map((src) => (
+                <img
+                  key={src}
+                  src={src}
+                  alt=""
+                  loading="lazy"
+                  className="h-72 rounded-2xl border object-cover flex-shrink-0"
+                  style={{ borderColor: colors.outlineVariant, scrollSnapAlign: 'start', width: 152 }}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="flex gap-3 px-5 py-3">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-72 rounded-2xl border flex-shrink-0 animate-pulse" style={{ borderColor: colors.outlineVariant, backgroundColor: colors.surfaceContainerHigh, width: 152 }} />
+              ))}
             </div>
           )}
+        </div>
 
-          <div className="p-5 rounded-3xl border flex flex-col gap-3" style={card}>
-            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: colors.onSurfaceVariant }}>Package</span>
-            {detail.checked && !detail.installable ? (
-              <p className="text-xs opacity-75">This repository does not publish an APK on its releases, so there is nothing to install.</p>
-            ) : detail.apkName ? (
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-mono truncate">{detail.apkName}</span>
-                <span className="opacity-70 flex-shrink-0 ml-2">{formatAppSize(detail.apkSize ?? 0)}</span>
-              </div>
-            ) : (
-              <p className="text-xs opacity-70">Checking the latest release…</p>
-            )}
-
-            {isDownloading && (
-              <div className="flex flex-col gap-1.5">
-                <div className="h-1.5 rounded-full overflow-hidden" style={{ backgroundColor: colors.surfaceContainerHighest }}>
-                  <div className="h-full rounded-full" style={{ width: `${download.state.percent}%`, backgroundColor: colors.primary, transition: 'width 200ms linear' }} />
-                </div>
-                <span className="text-[10px] font-mono opacity-70">
-                  {formatAppSize(download.state.received)} / {formatAppSize(download.state.total)} · {formatSpeed(download.state.speedBps)}
-                </span>
-              </div>
-            )}
-
-            {download.state.status === 'done' && (
-              <p className="text-xs font-bold" style={{ color: colors.diffAdded }}>✓ Downloaded — the installer should be open</p>
-            )}
-            {download.state.status === 'error' && (
-              <p className="text-xs font-semibold" style={{ color: colors.error }}>{download.state.error}</p>
-            )}
-
-            <div className="flex flex-wrap gap-2">
-              <M3Button
-                variant="filled" shape="capsule" size="compact"
-                disabled={!detail.apkUrl || isDownloading}
-                loading={isDownloading}
-                onClick={() => install(detail)}
-              >
-                {download.state.status === 'done' ? 'Download again' : 'Install'}
-              </M3Button>
-              <M3Button variant="tonal" shape="capsule" size="compact" onClick={() => openExternal(detail.htmlUrl)}>On GitHub ↗</M3Button>
+        {/* About this app */}
+        {detail.description && (
+          <div className="px-5 pt-2 pb-1">
+            <div className="p-5 rounded-3xl border" style={card}>
+              <span className="text-xs font-bold uppercase tracking-wider" style={{ color: colors.onSurfaceVariant }}>About this app</span>
+              <p className="text-xs leading-relaxed opacity-90 mt-2">{detail.description}</p>
             </div>
+          </div>
+        )}
+
+        {/* App info */}
+        <div className="px-5 pt-2 pb-28">
+          <div className="p-5 rounded-3xl border flex flex-col gap-3" style={card}>
+            <span className="text-xs font-bold uppercase tracking-wider" style={{ color: colors.onSurfaceVariant }}>App info</span>
+            {infoRow('Version', detail.version || '—')}
+            {infoRow('Size', detail.apkSize ? formatAppSize(detail.apkSize) : '—')}
+            {infoRow('Language', detail.language || '—')}
+            {infoRow('Visibility', detail.isPrivate ? 'Private' : 'Public')}
+            {infoRow('Package', detail.apkName || '—', true)}
+            {infoRow('Repository', detail.id)}
           </div>
         </div>
       </div>
@@ -258,7 +339,7 @@ export const AppStoreScreen: React.FC<Props> = ({ token, username, repos, onRequ
   /* ----------------------------- list ----------------------------- */
 
   return (
-    <div className="flex-1 flex flex-col select-none" style={{ backgroundColor: colors.background }}>
+    <div className="flex-1 min-h-0 flex flex-col select-none" style={{ backgroundColor: colors.background }}>
       {/* Search bar + mode button */}
       <div className="px-3 pt-3 pb-3 border-b gitofy-topbar flex items-center gap-2" style={{ backgroundColor: colors.surface, borderColor: colors.outlineVariant }}>
         <M3IconButton aria-label="Close search" onClick={onRequestClose}>
@@ -359,24 +440,53 @@ export const AppStoreScreen: React.FC<Props> = ({ token, username, repos, onRequ
         )}
 
         {mode === 'library' && (
-          libraryMatches.length === 0 ? (
-            <p className="text-xs opacity-70 py-6 text-center">{query.trim() ? 'No downloaded app matches that.' : 'Your library is empty.'}</p>
-          ) : (
-            libraryMatches.map((a) => (
-              <div key={a.id} className="p-3.5 rounded-2xl border flex items-center gap-3" style={rowStyle}>
-                <AppIconProgress src={a.ownerAvatar || undefined} label={a.name} size={52} />
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-bold truncate">{a.name}</div>
-                  <div className="text-[10px] opacity-70 truncate">{a.owner}{a.version ? ` · ${a.version}` : ''}</div>
-                  <div className="text-[10px] opacity-50 truncate">{new Date(a.downloadedAt).toLocaleDateString()}</div>
-                </div>
-                <div className="flex flex-col gap-1 flex-shrink-0">
-                  <button type="button" className="text-[11px] font-bold cursor-pointer" style={{ color: colors.primary }} onClick={() => openExternal(a.htmlUrl)}>Open</button>
-                  <button type="button" className="text-[11px] font-bold cursor-pointer" style={{ color: colors.error }} onClick={() => { removeFromLibrary(a.id); refreshLibrary(); }}>Remove</button>
-                </div>
-              </div>
-            ))
-          )
+          <>
+            {libraryRepoMatches.length > 0 && (
+              <>
+                <span className="text-xs font-bold uppercase tracking-wider mt-1" style={{ color: colors.onSurfaceVariant }}>Your repositories</span>
+                {libraryRepoMatches.map((app) => (
+                  <button
+                    key={app.id}
+                    type="button"
+                    onClick={() => openExternal(app.htmlUrl)}
+                    className="p-3.5 rounded-2xl border flex items-center gap-3 text-left cursor-pointer active:scale-[0.99] transition-transform"
+                    style={rowStyle}
+                  >
+                    <AppIconProgress src={app.ownerAvatar || undefined} label={app.name} size={52} />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-bold truncate">{app.name}</div>
+                      <div className="text-[10px] opacity-70 truncate">{app.owner}{app.description ? ` · ${app.description}` : ''}</div>
+                    </div>
+                    <svg className="w-4 h-4 flex-shrink-0 opacity-40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6" /></svg>
+                  </button>
+                ))}
+              </>
+            )}
+
+            {libraryMatches.length === 0 && libraryRepoMatches.length === 0 ? (
+              <p className="text-xs opacity-70 py-6 text-center">{query.trim() ? 'No downloaded app or repository matches that.' : 'Your library is empty.'}</p>
+            ) : (
+              <>
+                {libraryMatches.length > 0 && query.trim() && (
+                  <span className="text-xs font-bold uppercase tracking-wider mt-1" style={{ color: colors.onSurfaceVariant }}>Downloaded</span>
+                )}
+                {libraryMatches.map((a) => (
+                  <div key={a.id} className="p-3.5 rounded-2xl border flex items-center gap-3" style={rowStyle}>
+                    <AppIconProgress src={a.ownerAvatar || undefined} label={a.name} size={52} />
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-bold truncate">{a.name}</div>
+                      <div className="text-[10px] opacity-70 truncate">{a.owner}{a.version ? ` · ${a.version}` : ''}</div>
+                      <div className="text-[10px] opacity-50 truncate">{new Date(a.downloadedAt).toLocaleDateString()}</div>
+                    </div>
+                    <div className="flex flex-col gap-1 flex-shrink-0">
+                      <button type="button" className="text-[11px] font-bold cursor-pointer" style={{ color: colors.primary }} onClick={() => openExternal(a.htmlUrl)}>Open</button>
+                      <button type="button" className="text-[11px] font-bold cursor-pointer" style={{ color: colors.error }} onClick={() => { removeFromLibrary(a.id); refreshLibrary(); }}>Remove</button>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+          </>
         )}
 
         {mode !== 'library' && query.trim() && loading && <SkeletonRows count={4} height={66} />}

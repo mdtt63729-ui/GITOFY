@@ -32,14 +32,6 @@ export const M3BottomSheet: React.FC<M3BottomSheetProps> = ({
 
   // Keep the sheet mounted while it slides out, so open AND close are smooth.
   const [render, setRender] = useState(isOpen);
-  // The backdrop blur is only switched on once the sheet has finished opening:
-  // a full-screen blur repaints every frame and made the entrance lag.
-  const [settled, setSettled] = useState(false);
-  useEffect(() => {
-    if (!isOpen) { setSettled(false); return; }
-    const t = window.setTimeout(() => setSettled(true), 470);
-    return () => window.clearTimeout(t);
-  }, [isOpen]);
   const [closing, setClosing] = useState(false);
 
   useEffect(() => {
@@ -67,7 +59,7 @@ export const M3BottomSheet: React.FC<M3BottomSheetProps> = ({
           if (settings.haptics) triggerHaptic('tick');
           onClose();
         }}
-        className={`${settled ? 'gscrim-blur ' : ''}absolute inset-0 bg-black/40 ${closing ? 'scrim-out' : 'scrim-in'}`}
+        className={`gscrim-blur absolute inset-0 bg-black/40 ${closing ? 'scrim-out' : 'scrim-in'}`}
       />
 
       {/* Sheet Modal */}

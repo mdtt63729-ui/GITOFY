@@ -35,13 +35,6 @@ export const M3Dialog: React.FC<M3DialogProps> = ({
   // closing are both smooth (it used to vanish instantly on close).
   const [render, setRender] = useState(isOpen);
   const [closing, setClosing] = useState(false);
-  // Blur only after the dialog has settled (see M3BottomSheet).
-  const [settled, setSettled] = useState(false);
-  useEffect(() => {
-    if (!isOpen) { setSettled(false); return; }
-    const t = window.setTimeout(() => setSettled(true), 340);
-    return () => window.clearTimeout(t);
-  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen) {
@@ -86,7 +79,7 @@ export const M3Dialog: React.FC<M3DialogProps> = ({
       {/* Scrim */}
       <div
         onClick={handleDismiss}
-        className={`${settled ? 'gscrim-blur ' : ''}absolute inset-0 bg-black/45 ${closing ? 'scrim-out' : 'scrim-in'}`}
+        className={`gscrim-blur absolute inset-0 bg-black/45 ${closing ? 'scrim-out' : 'scrim-in'}`}
       />
 
       {/* Modal Dialog Card */}

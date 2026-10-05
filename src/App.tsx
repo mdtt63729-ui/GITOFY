@@ -111,6 +111,12 @@ const SCREEN_DEPTH: Record<string, number> = {
   repo_commits: 3,
 };
 
+/**
+ * Remembers that this install has already shown the "signing you in" hand-off,
+ * so it appears only on the very first login and never again.
+ */
+const SIGNED_IN_BEFORE_KEY = 'gitofy.signedInBefore';
+
 function GitofyApp() {
   const { settings, triggerHaptic, colors } = useTheme();
   const {
@@ -235,14 +241,21 @@ function GitofyApp() {
   }, [currentScreen, currentTab]);
 
   // A short, smooth "signing you in" panel the moment GitHub authorises the
-  // device flow — so the return from the browser resolves into a deliberate
-  // moment instead of a 2-3 s wait on a stalled screen.
+  // device flow — but ONLY on the very first login this install ever makes.
+  // After that (a later logout + login, or a second account) it never appears.
   const [signingIn, setSigningIn] = useState(false);
   const wasAuthenticatedRef = useRef(session.isAuthenticated);
   useEffect(() => {
     const was = wasAuthenticatedRef.current;
     wasAuthenticatedRef.current = session.isAuthenticated;
     if (was || !session.isAuthenticated) return;
+
+    let signedInBefore = false;
+    try { signedInBefore = localStorage.getItem(SIGNED_IN_BEFORE_KEY) === '1'; } catch { /* ignore */ }
+    // Stamp the first sign-in now, so the panel can never come back.
+    try { localStorage.setItem(SIGNED_IN_BEFORE_KEY, '1'); } catch { /* ignore */ }
+    if (signedInBefore) return;
+
     setSigningIn(true);
     // A deliberate, premium hand-off that runs for five seconds.
     const t = window.setTimeout(() => setSigningIn(false), 5000);
