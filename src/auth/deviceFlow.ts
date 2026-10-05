@@ -93,12 +93,19 @@ export interface PollCallbacks {
 export type PollAction =
   | { kind: 'token'; token: string }
   | { kind: 'continue' }
+  | { kind: 'network' }
   | { kind: 'slow_down'; interval: number }
   | { kind: 'error'; error: AuthError };
 
 export function nextPollAction(data: { access_token?: string; error?: string }, currentInterval: number): PollAction {
   if (data.access_token) return { kind: 'token', token: data.access_token };
   switch (data.error) {
+    case 'network_error':
+      // The native bridge answers with this instead of throwing, so it must be
+      // treated as transient — NOT as a fatal device-flow error. This is what
+      // produced the DEVFLOW_network_error screen right after returning from
+      // the browser (where the app had been backgrounded).
+      return { kind: 'network' };
     case 'authorization_pending':
       return { kind: 'continue' };
     case 'slow_down':
@@ -139,9 +146,11 @@ export class GitHubDeviceFlowProvider {
     // `scope` parameter is omitted for them (it would otherwise be rejected).
     const body: Record<string, string> = { client_id: AuthConfig.clientId };
     if (!isGitHubApp()) body.scope = scope;
+    // Retry a transient network failure a few times with backoff — the app may
+    // be starting up, or just coming back from the browser.
     let data = (await oauthFormPost(AuthConfig.endpoints.deviceCode, body, signal)).json as RawDeviceCode;
-    // One retry if the native transport reported a network error.
-    if (data.error === 'network_error') {
+    for (let attempt = 0; data.error === 'network_error' && attempt < 4; attempt += 1) {
+      await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
       data = (await oauthFormPost(AuthConfig.endpoints.deviceCode, body, signal)).json as RawDeviceCode;
     }
     if (data.error) throw fromDeviceFlowError(data.error, data.detail);
@@ -207,14 +216,26 @@ export class GitHubDeviceFlowProvider {
         throw err;
       }
 
+      const data = result.json as { access_token?: string; error?: string };
+      const action = nextPollAction(data, intervalSec);
+
+      if (action.kind === 'network') {
+        if (!offline) {
+          offline = true;
+          cb.onOffline?.();
+        }
+        // Back off, but never stop polling — the app may simply have been in
+        // the background while the user approved the code in the browser.
+        backoffMs = Math.min(backoffMs === 0 ? 1500 : backoffMs * 2, 15000);
+        continue;
+      }
+
       if (offline) {
         offline = false;
         backoffMs = 0;
         cb.onOnline?.();
       }
 
-      const data = result.json as { access_token?: string; error?: string };
-      const action = nextPollAction(data, intervalSec);
       if (action.kind === 'token') return action.token;
       if (action.kind === 'continue') {
         cb.onPending?.();

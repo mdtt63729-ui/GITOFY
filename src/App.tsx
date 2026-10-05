@@ -178,7 +178,10 @@ function GitofyApp() {
   useEffect(() => {
     prevScreenRef.current = currentScreen;
   }, [currentScreen]);
-  const [isFabVisible, setIsFabVisible] = useState(false);
+  // The FAB's own visibility, driven ONLY by scroll direction — it is no
+  // longer tied to the bottom nav bar.
+  const [fabVisible, setFabVisible] = useState(true);
+  const fabAccumRef = useRef(0);
   const scrollAccumRef = useRef(0);
 
   // Delete Mode State (§৮.৪.২)
@@ -208,7 +211,7 @@ function GitofyApp() {
   const pendingTargetRepoRef = useRef<Repository | null>(null);
 
   // Load real GitHub repositories
-  const loadRepositories = useCallback(async () => {
+  const loadRepositories = useCallback(async (options?: { minSkeletonMs?: number }) => {
     if (!settings.personalAccessToken) {
       setRepos([]);
       return;
@@ -223,10 +226,12 @@ function GitofyApp() {
       const msg = err instanceof Error ? err.message : 'Failed to load';
       console.warn('Could not load repos from GitHub:', msg);
     } finally {
-      // Hold the skeleton for at least 2 s, so refreshing never flashes the
-      // list in and out — the results then fade in smoothly.
+      // A manual refresh holds the skeleton briefly so it never flashes; an
+      // automatic load returns as soon as the data is there (the old blanket
+      // 2 s hold made every home open feel slow).
+      const minMs = options?.minSkeletonMs ?? 0;
       const elapsed = Date.now() - startedAt;
-      if (elapsed < 2000) await new Promise((r) => window.setTimeout(r, 2000 - elapsed));
+      if (minMs > 0 && elapsed < minMs) await new Promise((r) => window.setTimeout(r, minMs - elapsed));
       setIsLoadingRepos(false);
     }
   }, [settings.personalAccessToken]);
@@ -259,13 +264,35 @@ function GitofyApp() {
 
   // Scroll-Reactive Handler: keep high-frequency scroll work outside React state.
   const handleScrollDelta = useCallback((scrollTop: number, delta: number) => {
-    if (!settings.autoHideNav || isDeleteMode) return;
+    if (isDeleteMode) return;
+
+    // ---- FAB (independent of the nav bar) --------------------------------
+    // Scroll up  -> the FAB is there. Scroll down -> it slides away.
+    if (scrollTop <= 16) {
+      fabAccumRef.current = 0;
+      setFabVisible(true);
+    } else {
+      if ((fabAccumRef.current > 0 && delta > 0) || (fabAccumRef.current < 0 && delta < 0)) {
+        fabAccumRef.current += delta;
+      } else {
+        fabAccumRef.current = delta;
+      }
+      const fabThreshold = 8;
+      if (fabAccumRef.current >= fabThreshold) {
+        setFabVisible(false);
+        fabAccumRef.current = 0;
+      } else if (fabAccumRef.current <= -fabThreshold) {
+        setFabVisible(true);
+        fabAccumRef.current = 0;
+      }
+    }
+
+    if (!settings.autoHideNav) return;
 
     if (scrollTop <= 16) {
       scrollAccumRef.current = 0;
       if (!isNavVisible) {
         setIsNavVisible(true);
-        setIsFabVisible(false);
       }
       return;
     }
@@ -279,10 +306,8 @@ function GitofyApp() {
     const threshold = settings.scrollThreshold || 20;
     if (scrollAccumRef.current >= threshold && isNavVisible) {
       setIsNavVisible(false);
-      setIsFabVisible(true);
       scrollAccumRef.current = 0;
     } else if (scrollAccumRef.current <= -threshold && !isNavVisible) {
-      setIsFabVisible(false);
       setIsNavVisible(true);
       scrollAccumRef.current = 0;
     }
@@ -621,7 +646,7 @@ function GitofyApp() {
           <HomeScreen
             repos={repos}
             isLoading={isLoadingRepos}
-            onRefresh={loadRepositories}
+            onRefresh={() => { void loadRepositories({ minSkeletonMs: 900 }); }}
             onSelectRepo={(r) => {
               setSelectedRepo(r);
               setCurrentScreen('repo_dashboard');
@@ -673,7 +698,6 @@ function GitofyApp() {
             onScrollDelta={handleScrollDelta}
             onDetailVisibilityChange={(open) => {
               setIsNavVisible(!open);
-              setIsFabVisible(false);
             }}
           />
         )}
@@ -943,9 +967,9 @@ function GitofyApp() {
       {/* Scroll-Reactive FAB Menu (§৫.৯ & §৭) */}
       {currentScreen === 'home' && !isDeleteMode && (
         <FabMenu
-          // Hide while scrolling down and bring it back on scroll up, in step
-          // with the bottom nav (the animation that was removed earlier).
-          visible={isNavVisible}
+          // Its own scroll rule (see handleScrollDelta): scroll up and it is
+          // there, scroll down and it slides away.
+          visible={fabVisible}
           onCreateRepo={() => setIsCreateSheetOpen(true)}
           onDeleteRepo={() => {
             triggerHaptic('heavy');

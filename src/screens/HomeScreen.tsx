@@ -53,6 +53,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   // True once the first batch of cards has been shown, so later reveals
   // (scrolling, or a filter change) play the entrance animation.
   const initialRevealDoneRef = useRef(false);
+  // True right after a load finishes, so the freshly-arrived cards fade in
+  // smoothly instead of appearing instantly.
+  const justLoadedRef = useRef(false);
+  const prevLoadingRef = useRef(isLoading);
+  useEffect(() => {
+    if (prevLoadingRef.current && !isLoading) justLoadedRef.current = true;
+    prevLoadingRef.current = isLoading;
+  }, [isLoading]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const lastScrollTopRef = useRef(0);
@@ -95,9 +103,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         entries.forEach((entry) => {
           if (!entry.isIntersecting) return;
           const el = entry.target as HTMLElement;
-          if (!initialRevealDoneRef.current) {
-            // Cards already on screen when the list mounted: show them straight
-            // away instead of replaying the entrance.
+          if (!initialRevealDoneRef.current && !justLoadedRef.current) {
+            // Cards already on screen when the list re-mounted (e.g. coming
+            // back from a repository): show them straight away instead of
+            // replaying the entrance.
             el.classList.add('repo-card-instant');
             el.classList.add('repo-card-revealed');
           } else {

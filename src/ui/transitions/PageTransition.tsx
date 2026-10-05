@@ -73,9 +73,16 @@ export const PageTransition: React.FC<PageTransitionProps> = ({
     setSettled(false);
   }
 
+  // The very first appearance of the app (right after onboarding/sign-in) gets
+  // a gentle fade+rise rather than a full-width slide, so the app simply
+  // arrives instead of showing a blank frame while it slides in.
+  const firstMountRef = useRef(animateOnMount);
   const frameRef = useRef<number | null>(null);
   useEffect(() => {
-    if (settled) return;
+    if (settled) {
+      firstMountRef.current = false;
+      return;
+    }
     // One frame paints the start position, the next animates to the end.
     const raf1 = requestAnimationFrame(() => {
       frameRef.current = requestAnimationFrame(() => setSettled(true));
@@ -99,6 +106,9 @@ export const PageTransition: React.FC<PageTransitionProps> = ({
   if (!settled) {
     if (reduce) {
       opacity = PAGE_TRANSITION.reducedFadeFrom;
+    } else if (firstMountRef.current) {
+      transform = 'translateY(16px) scale(.988)';
+      opacity = 0;
     } else if (isTab) {
       opacity = PAGE_TRANSITION.tabFadeFrom;
     } else if (direction === 'back') {

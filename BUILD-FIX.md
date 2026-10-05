@@ -625,3 +625,32 @@ Also:
    `1.0.<run number>` while a tag push built the tag, so the two could drift.
    A manual run now bumps the patch of the newest release tag, so versionName
    and the release tag are always the same string.
+
+## DEVFLOW_network_error root cause, FAB scroll, home load (this revision)
+
+1. **DEVFLOW_network_error after minimising + authorising — real root cause.**
+   The native transport does not *throw* on a failed call; it returns
+   `{status:0, json:{error:'network_error'}}`. The poll loop only handled
+   *thrown* network errors, so that result fell through to
+   `nextPollAction`'s default branch → `fromDeviceFlowError('network_error')` →
+   a FATAL error → the "Something went wrong / DEVFLOW_network_error" screen.
+   That is exactly why it appeared after returning from the browser, when the
+   app had been backgrounded. `nextPollAction` now returns a `network` action
+   that the loop treats like a thrown network error: back off (1.5 s → 15 s) and
+   keep polling. The device-code request itself also retries up to 4 times with
+   backoff instead of once.
+
+2. **The FAB is no longer tied to the nav bar.** It has its own scroll rule now:
+   scrolling up keeps/brings it back, scrolling down slides it away, and nothing
+   else (screen changes, nav changes) moves it. The threshold is 8 px so it
+   responds immediately.
+
+3. **The home screen is no longer slow to open.** Every load held the skeleton
+   for a minimum of 2 s, which is what the video shows (the repository list
+   sitting on placeholders). That hold now applies to a manual Refresh only
+   (900 ms); an automatic load returns as soon as the data arrives. The first
+   batch of cards also fades in smoothly after a load, while cards already on
+   screen when the list re-mounts still appear instantly (no reload flicker).
+
+4. **The app's first appearance is a gentle fade+rise**, not a full-width slide
+   — the slide was leaving a blank frame for a moment on cold start.
