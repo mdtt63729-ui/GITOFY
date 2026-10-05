@@ -120,10 +120,27 @@ export const WorkflowRunDetailScreen:React.FC<Props>=({repoName,workflow,initial
   const lines=useMemo(()=>parseLines(rawLog),[rawLog]);
   const filtered=useMemo(()=>{
     let out=lines.filter(l=>showDebug||l.level!=='debug');
-    if(stepFilter!==null){ const marker=new RegExp('##\\[group\\].*'+stepFilter,'i'); out=out.filter(l=>marker.test(l.text)||l.text.toLowerCase().includes(`step ${stepFilter}`)); }
+    if(stepFilter!==null){
+      // GitHub marks each step's log with `##[group]<step name>` … `##[endgroup]`,
+      // so match on the step's NAME and show that whole section.
+      const step=selectedJob?.steps.find(s=>s.number===stepFilter);
+      const needle=(step?.name||'').trim().toLowerCase();
+      const lines2=out;
+      const start=needle?lines2.findIndex(l=>l.text.includes('##[group]')&&l.text.toLowerCase().includes(needle)):-1;
+      if(start>=0){
+        let end=lines2.length;
+        for(let i=start+1;i<lines2.length;i++){
+          if(lines2[i].text.includes('##[group]')||lines2[i].text.includes('##[endgroup]')){ end=i; break; }
+        }
+        out=lines2.slice(start,end);
+      } else {
+        // No group marker (older logs): fall back to a name match.
+        out=needle?lines2.filter(l=>l.text.toLowerCase().includes(needle)):[];
+      }
+    }
     if(search){ try{const q=regex?new RegExp(search,caseSensitive?'':'i') : null; out=out.filter(l=>q?q.test(l.text):(caseSensitive?l.text.includes(search):l.text.toLowerCase().includes(search.toLowerCase())))}catch{} }
     return out;
-  },[lines,showDebug,stepFilter,search,regex,caseSensitive]);
+  },[lines,showDebug,stepFilter,search,regex,caseSensitive,selectedJob]);
 
   // Memoised so the once-a-second clock tick does not re-create (and therefore
   // re-render) the whole log list.
@@ -158,7 +175,7 @@ export const WorkflowRunDetailScreen:React.FC<Props>=({repoName,workflow,initial
   const runTone=toneOf({status:run?.status||'queued',conclusion:run?.conclusion||null}); const runColor=colorFor(runTone,colors);
   return <div className="flex-1 flex flex-col gitofy-scroll select-none" style={{backgroundColor:colors.surface}}>
     <div className="sticky top-0 z-30 px-3 py-2.5 border-b gitofy-topbar" style={{backgroundColor:`${colors.surface}f5`,borderColor:colors.outlineVariant}}>
-      <div className="flex items-start gap-2"><M3IconButton aria-label="Back" onClick={()=>{leavingRef.current=true;onBack();}}><svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></M3IconButton><div className="min-w-0 flex-1"><h2 className="text-base font-black truncate">{workflow.name}</h2><p className="text-[10px] font-mono opacity-65 truncate">{repoName} · @{settings.githubUsername||'user'} · #{run?.run_number??'—'} · {run?.head_branch||'main'}</p></div><M3IconButton aria-label="Run actions" onClick={()=>{triggerHaptic('tick');setActionMenuOpen(v=>!v)}}><svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg></M3IconButton></div>
+      <div className="flex items-start gap-2"><M3IconButton aria-label="Back" onClick={()=>{onBack();leavingRef.current=true;}}><svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></M3IconButton><div className="min-w-0 flex-1"><h2 className="text-base font-black truncate">{workflow.name}</h2><p className="text-[10px] font-mono opacity-65 truncate">{repoName} · @{settings.githubUsername||'user'} · #{run?.run_number??'—'} · {run?.head_branch||'main'}</p></div><M3IconButton aria-label="Run actions" onClick={()=>{triggerHaptic('tick');setActionMenuOpen(v=>!v)}}><svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg></M3IconButton></div>
       <div className="mt-2 flex items-center gap-2 overflow-x-auto"><span className="px-2.5 py-1 rounded-full text-[10px] font-bold whitespace-nowrap" style={{backgroundColor:connection==='offline'?colors.errorContainer:connection==='reconnecting'?colors.tertiaryContainer:colors.diffAddedContainer,color:connection==='offline'?colors.error:connection==='reconnecting'?colors.tertiary:colors.diffAdded}}><span className="relative inline-grid align-middle"><span style={{gridArea:'1 / 1',opacity:polling?0:1,transition:'opacity 220ms ease'}}>● {connection==='offline'?'Offline':connection==='reconnecting'?'Reconnecting':statusText(runTone)}</span><span style={{gridArea:'1 / 1',opacity:polling?1:0,transition:'opacity 220ms ease'}}>● Polling</span></span>{connection!=='live'?` · Updated ${Math.max(0,Math.floor((Date.now()-updatedAt)/1000))}s ago`:''}</span><span className="text-[10px] font-mono opacity-55 whitespace-nowrap">Elapsed {duration(run?.created_at,run?.status==='completed'?run.updated_at:null,now)}</span><button className="text-[10px] font-bold underline whitespace-nowrap" onClick={()=>openExternal(run?.html_url)}>GitHub ↗</button><span className="ml-auto px-2 py-1 rounded-full text-[10px] font-black whitespace-nowrap" style={{color:runColor,backgroundColor:`${runColor}22`}}>{statusText(runTone)}</span></div>
     </div>
     <div className="p-4 pb-28 flex flex-col gap-3">
@@ -184,14 +201,19 @@ export const WorkflowRunDetailScreen:React.FC<Props>=({repoName,workflow,initial
     </div>
 
     {actionMenuOpen && <>
-      <div className="fixed inset-0 z-40" style={{backgroundColor:'rgba(0,0,0,.22)'}} onClick={()=>setActionMenuOpen(false)} />
+      <div
+        className="fixed inset-0 z-40"
+        style={{ backgroundColor: 'rgba(0,0,0,.22)', pointerEvents: 'auto' }}
+        onPointerDown={() => setActionMenuOpen(false)}
+        onClick={() => setActionMenuOpen(false)}
+      />
       <div className="fixed right-3 z-[70] flex flex-col items-end gap-2" style={{top:'calc(var(--gitofy-top-bar) + 46px)'}}>
         {([
           {id:'refresh',label:'Refresh',bg:colors.primaryContainer,fg:colors.onPrimaryContainer,act:()=>void refreshAll()},
           {id:'cancel',label:'Cancel run',bg:colors.surfaceContainerHigh,fg:colors.onSurface,act:()=>void performAction('cancel')},
           {id:'rerun',label:'Re-run all',bg:colors.secondaryContainer,fg:colors.onSecondaryContainer,act:()=>void performAction('rerun')},
           {id:'failed',label:'Re-run failed',bg:colors.tertiaryContainer,fg:colors.onTertiaryContainer,act:()=>void performAction('failed')},
-        ]).map((item,i)=>(<button key={item.id} type="button" disabled={actionBusy} onClick={()=>{setActionMenuOpen(false);item.act();}} className="gitofy-drop-in flex items-center justify-end h-12 pl-4 pr-5 rounded-full shadow-lg border select-none cursor-pointer active:scale-95" style={{backgroundColor:item.bg,color:item.fg,borderColor:colors.outlineVariant,minWidth:56,animationDelay:`${i*30}ms`}}><span className="text-sm font-semibold tracking-wide whitespace-nowrap">{item.label}</span></button>))}
+        ]).map((item,i)=>(<button key={item.id} type="button" onClick={()=>{setActionMenuOpen(false);item.act();}} className="gitofy-drop-in flex items-center justify-end h-12 pl-4 pr-5 rounded-full shadow-lg border select-none cursor-pointer active:scale-95" style={{backgroundColor:item.bg,color:item.fg,borderColor:colors.outlineVariant,minWidth:56,animationDelay:`${i*30}ms`}}><span className="text-sm font-semibold tracking-wide whitespace-nowrap">{item.label}</span></button>))}
       </div>
     </>}
   </div>;

@@ -151,6 +151,9 @@ export class AuthRepository {
     await sessionManager.persistAccount(record);
   }
 
+  /** Consecutive E_SESSION failures — one transient failure must not log out. */
+  private sessionStrikes = 0;
+
   /** Re-validate the active session in the background (§7.3). */
   async validateActiveSession(): Promise<void> {
     const token = sessionManager.getActiveToken();
@@ -169,6 +172,16 @@ export class AuthRepository {
       // normally.
       const justSignedIn = Date.now() - (sessionManager.getActiveAccount()?.loginAt ?? 0) < 20000;
       if (justSignedIn && authError.code === 'E_SESSION') return;
+      if (authError.code === 'E_SESSION') {
+        // Require two consecutive rejections before ending the session: a single
+        // 401 (a hiccup, a captive portal, a rate-limited edge) used to sign the
+        // user out of the app after it had been idle for a while.
+        this.sessionStrikes += 1;
+        if (this.sessionStrikes < 2) return;
+        this.sessionStrikes = 0;
+      } else {
+        this.sessionStrikes = 0;
+      }
       sessionManager.handleAuthError(authError);
     }
   }

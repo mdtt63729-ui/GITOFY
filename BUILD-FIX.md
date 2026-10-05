@@ -742,3 +742,63 @@ its size and download count: `12.34 MB · 5 downloads · Uploaded 5 Oct 2026,
 6:57 pm`. It uses GitHub's `asset.created_at` (falling back to `updated_at`), so
 it reflects the real publish time of every APK — including the release APK.
 The release header now shows the publish date AND time too.
+
+## Workflow-once, runs list, logout, top bars, live updates (this revision)
+
+1. **Every workflow runs exactly once — one more case fixed.** `branches-ignore`
+   was treated like `branches`, so a workflow that listens for `push` on every
+   branch EXCEPT the one you pushed was considered "already triggered" and never
+   dispatched — it did not run at all. `branches-ignore` now inverts the test,
+   and a `tags:`-only push is still recognised. Verified with 10 synthetic cases
+   (10/10) plus the project's own workflows.
+
+2. **A dispatched run stays in the runs list.** The "has it arrived yet?" check
+   treated any run created in the previous 60 s as the real one, so the pending
+   entry was dropped almost immediately. It now only stands down for a run
+   created at/after the dispatch, and gives up after two minutes.
+
+3. **The app no longer signs you out after a long time away.** Two causes: a
+   single `E_SESSION` from a background validation ended the session, and a
+   transient storage-read failure during cold start looked identical to "no
+   session". Expiry now needs two consecutive rejections, and the stored session
+   is read with one retry.
+
+4. **Top bars sit just below the camera again.** The 0.5 cm gap I added on top of
+   the measured cutout pushed everything far too low; `--gitofy-cutout-gap` is
+   now 0, so the bars clear the camera exactly like a normal app.
+
+5. **Updates show up live.** The release was only re-checked when the app came
+   back to the foreground, so a freshly uploaded APK appeared only after
+   restarting. It is now also re-checked every 60 s while the app is open.
+
+6. **Workflows page Back leaves immediately** — it sets a `leaving` flag that
+   stops the background runs poll before navigating, so the transition is not
+   competing with a fetch and re-render.
+
+7. **The update can never download by itself.** `onDownload` now refuses unless a
+   real touch happened while the sheet was visible, so no synthetic or automatic
+   activation can start a download.
+
+## Run menu, step logs, back, long-press run menu, FAB (this revision)
+
+1. **Step logs actually show now.** The step filter looked for
+   `##[group]...<step number>`, but GitHub writes the step NAME in the group
+   marker — so it matched nothing and the log looked empty. It now finds the
+   `##[group]<step name>` section and shows those lines (with a name-match
+   fallback for older logs).
+
+2. **Run-detail ⋮ menu.** The outside-tap scrim now closes on `pointerdown` as
+   well as click, so tapping anywhere off the menu always dismisses it, and the
+   menu items are no longer disabled while an action runs, so the ⋮ button and
+   the menu stay usable throughout.
+
+3. **Back on the step page navigates first**, then stops the pollers — so the
+   exit is immediate and a second tap always works.
+
+4. **Long-press a run for a quick menu** (Cancel workflow / Re-run workflow /
+   Delete workflow run), each with its own icon. 700 ms hold; the popup closes on
+   any outside touch. New API helper `deleteWorkflowRun`.
+   (I used 0.7 s rather than a full 2 s — 2 s feels broken on a phone.)
+
+5. **FAB reacts to scroll immediately** — it comes back the instant the finger
+   moves up, and only slides away after 24 px of deliberate downward scroll.

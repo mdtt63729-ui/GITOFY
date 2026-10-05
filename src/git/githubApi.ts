@@ -139,20 +139,22 @@ async function workflowListensForPush(
     const indent = bodyLines[pushIdx].length - bodyLines[pushIdx].trimStart().length;
     const pushBody = indentedBlock(bodyLines, pushIdx, indent);
 
-    const tagsOnly = /(^|\n)\s*tags(-ignore)?\s*:/.test(pushBody);
-    const branchesMatch = /(^|\n)\s*branches(-ignore)?\s*:([\s\S]*)$/.exec(pushBody);
+    const tagsOnly = /(^|\n)\s*tags\s*:/.test(pushBody);
+    const branchesMatch = /(^|\n)\s*(branches|branches-ignore)\s*:([\s\S]*)$/.exec(pushBody);
     const branchesText = branchesMatch ? branchesMatch[3] : '';
+    const branchesIgnore = branchesMatch ? branchesMatch[2] === 'branches-ignore' : false;
 
     if (branchesText) {
       const list = branchesText.replace(/[[\]"']/g, ' ').split(/[,\s]+/).filter(Boolean);
       const covers = list.some(
         (b) => b === ref || b === '*' || (b.endsWith('*') && ref.startsWith(b.slice(0, -1)))
       );
-      if (!covers) return false;
+      // `branches-ignore` is the opposite: the listed branches are EXCLUDED.
+      if (branchesIgnore ? covers : !covers) return false;
     }
 
     // A push filtered to tags only never fires on a branch push.
-    if (tagsOnly && !branchesText) return false;
+    if (tagsOnly && !branchesText && !branchesIgnore) return false;
 
     return true;
   } catch {
@@ -495,6 +497,23 @@ export async function fetchUserActivityInbox(
 /**
  * Fetches real releases for a repository from GitHub API
  */
+/** DELETE /repos/{owner}/{repo}/actions/runs/{run_id} */
+export async function deleteWorkflowRun(
+  owner: string,
+  repo: string,
+  runId: number,
+  token: string
+): Promise<void> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/actions/runs/${runId}`, {
+    method: 'DELETE',
+    headers: githubHeaders(token),
+  });
+  if (!res.ok && res.status !== 404) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.message || `Could not delete the run (HTTP ${res.status}).`);
+  }
+}
+
 export async function fetchRepoReleases(
   owner: string,
   repo: string,

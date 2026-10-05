@@ -1131,7 +1131,7 @@ html[data-ui-mode='nxt'] button[data-m3='icon-button'] {
 :root {
   --gitofy-top: max(var(--gitofy-safe-top, env(safe-area-inset-top)), env(safe-area-inset-top));
   --gitofy-bottom: max(var(--gitofy-safe-bottom, env(safe-area-inset-bottom)), env(safe-area-inset-bottom));
-  --gitofy-cutout-gap: 0.5cm;
+  --gitofy-cutout-gap: 0px;
   --gitofy-top-bar: calc(var(--gitofy-top) + var(--gitofy-cutout-gap));
 }
 

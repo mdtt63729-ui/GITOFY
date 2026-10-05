@@ -4,6 +4,7 @@ import { WorkflowItem, WorkflowRun } from '../types';
 import { M3Button } from '../ui/m3/M3Button';
 import { M3IconButton } from '../ui/m3/M3IconButton';
 import { WorkflowRunDetailScreen } from './WorkflowRunDetailScreen';
+import { cancelWorkflowRunDetailed, rerunWorkflowRunDetailed, deleteWorkflowRun } from '../git/githubApi';
 import {
   fetchRepoWorkflows,
   fetchWorkflowRuns,
@@ -36,6 +37,13 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
   // A run we just dispatched, kept in the list until GitHub actually lists it
   // (which takes a few seconds), so it never blinks out of view.
   const pendingRunRef = useRef<WorkflowRun | null>(null);
+  // Set the instant Back is tapped, so the background poll cannot delay the exit.
+  const leavingRef = useRef(false);
+  // Long-press menu on a run: Cancel / Delete / Re-run.
+  const [menuRun, setMenuRun] = useState<WorkflowRun | null>(null);
+  const [menuBusy, setMenuBusy] = useState(false);
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressedRef = useRef(false);
   const [detailWorkflow, setDetailWorkflow] = useState<WorkflowItem | null>(null);
   const [detailRun, setDetailRun] = useState<WorkflowRun | null>(null);
   const [statusNotification, setStatusNotification] = useState<{
@@ -77,8 +85,9 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
 
   // Adaptive Direct Mode: the visible run list refreshes every 30s without a loading animation.
   useEffect(() => {
-    if (!selectedWorkflow) return;
+    if (!selectedWorkflow || leavingRef.current) return;
     const timer = window.setInterval(() => {
+      if (leavingRef.current) return;
       void (async () => {
         try {
           const workflowKey = selectedWorkflow.path ? selectedWorkflow.path.split('/').pop() || selectedWorkflow.id : selectedWorkflow.id;
@@ -96,10 +105,12 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
   const withPendingRun = (fresh: WorkflowRun[]): WorkflowRun[] => {
     const pending = pendingRunRef.current;
     if (!pending) return fresh;
-    const arrived = fresh.some(
-      (r) => new Date(r.created_at).getTime() >= new Date(pending.created_at).getTime() - 60000
-    );
-    if (arrived) {
+    const pendingAt = new Date(pending.created_at).getTime();
+    // Only a run created at/after the dispatch counts as "the real one" — and
+    // if the pending entry is older than two minutes, stop holding it.
+    const arrived = fresh.some((r) => new Date(r.created_at).getTime() >= pendingAt - 5000);
+    const stale = Date.now() - pendingAt > 120000;
+    if (arrived || stale) {
       pendingRunRef.current = null;
       return fresh;
     }
@@ -146,6 +157,43 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
   // Open the full run detail (jobs + steps + logs) for a run tapped in the list.
   // Previously the run cards had no click handler, so tapping a completed /
   // running / failed run did nothing and its steps could not be seen.
+  const startRunLongPress = (run: WorkflowRun) => {
+    longPressedRef.current = false;
+    longPressTimerRef.current = window.setTimeout(() => {
+      longPressedRef.current = true;
+      triggerHaptic('heavy');
+      setMenuRun(run);
+    }, 700);
+  };
+  const cancelRunLongPress = () => {
+    if (longPressTimerRef.current !== null) window.clearTimeout(longPressTimerRef.current);
+    longPressTimerRef.current = null;
+  };
+
+  const runMenuAction = async (kind: 'cancel' | 'rerun' | 'delete') => {
+    const run = menuRun;
+    if (!run) return;
+    setMenuRun(null);
+    setMenuBusy(true);
+    try {
+      if (kind === 'cancel') await cancelWorkflowRunDetailed(owner, repo, run.id, settings.personalAccessToken);
+      else if (kind === 'rerun') await rerunWorkflowRunDetailed(owner, repo, run.id, settings.personalAccessToken, false);
+      else await deleteWorkflowRun(owner, repo, run.id, settings.personalAccessToken);
+      triggerHaptic('success');
+      setStatusNotification({
+        text: kind === 'cancel' ? 'Cancel requested.' : kind === 'rerun' ? 'Re-run requested.' : 'Run deleted.',
+        isError: false,
+      });
+      if (kind === 'delete') setRuns((prev) => prev.filter((r) => r.id !== run.id));
+      if (selectedWorkflow) window.setTimeout(() => { void loadRuns(selectedWorkflow); }, 1200);
+    } catch (e) {
+      triggerHaptic('error');
+      setStatusNotification({ text: e instanceof Error ? e.message : 'GitHub action failed', isError: true });
+    } finally {
+      setMenuBusy(false);
+    }
+  };
+
   const openRunDetail = (run: WorkflowRun) => {
     triggerHaptic('tick');
     setDetailRun(run);
@@ -163,6 +211,41 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
       />
     );
   }
+
+
+  // Long-press menu for a run (Cancel / Delete / Re-run).
+  const runMenu = menuRun ? (
+    <>
+      <div
+        className="fixed inset-0 z-[75]"
+        style={{ backgroundColor: 'rgba(0,0,0,0.28)', pointerEvents: 'auto' }}
+        onPointerDown={() => setMenuRun(null)}
+        onClick={() => setMenuRun(null)}
+      />
+      <div className="fixed left-1/2 -translate-x-1/2 z-[80] w-[290px] rounded-3xl border p-2 shadow-2xl gitofy-screen-in" style={{ top: '42%', backgroundColor: colors.surfaceContainerHigh, borderColor: colors.outlineVariant }}>
+        <div className="px-3 pt-2 pb-1.5 text-[10px] font-black uppercase tracking-wider" style={{ color: colors.onSurfaceVariant }}>
+          Run #{menuRun.run_number} · {menuRun.conclusion || menuRun.status}
+        </div>
+        {([
+          { id: 'cancel', label: 'Cancel workflow', bg: colors.tertiaryContainer, fg: colors.onTertiaryContainer, icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><circle cx="12" cy="12" r="9" /><line x1="9" y1="9" x2="15" y2="15" /><line x1="15" y1="9" x2="9" y2="15" /></svg> },
+          { id: 'rerun', label: 'Re-run workflow', bg: colors.secondaryContainer, fg: colors.onSecondaryContainer, icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><path d="M21.5 2v6h-6" /><path d="M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" /></svg> },
+          { id: 'delete', label: 'Delete workflow run', bg: colors.errorContainer, fg: colors.onErrorContainer, icon: <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><line x1="10" y1="11" x2="10" y2="17" /><line x1="14" y1="11" x2="14" y2="17" /></svg> },
+        ] as const).map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            disabled={menuBusy}
+            onClick={() => void runMenuAction(item.id)}
+            className="w-full flex items-center gap-3 px-3 py-3 rounded-2xl text-left text-sm font-bold active:scale-[0.98] transition-transform"
+            style={{ backgroundColor: 'transparent', color: colors.onSurface }}
+          >
+            <span className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: item.bg, color: item.fg }}>{item.icon}</span>
+            {item.label}
+          </button>
+        ))}
+      </div>
+    </>
+  ) : null;
 
   // Real GitHub Actions Dispatch Execution
   const handleDispatch = async (targetWf?: WorkflowItem) => {
@@ -265,6 +348,7 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
 
   return (
     <div className="gitofy-screen-in flex-1 flex flex-col gitofy-scroll select-none">
+      {runMenu}
       {/* Top App Bar */}
       <div
         className="sticky top-0 z-30 px-4 py-3 border-b gitofy-topbar flex items-center justify-between"
@@ -274,7 +358,7 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
         }}
       >
         <div className="flex items-center gap-2">
-          <M3IconButton aria-label="Back" onClick={onBack}>
+          <M3IconButton aria-label="Back" onClick={() => { leavingRef.current = true; onBack(); }}>
             <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <line x1="19" y1="12" x2="5" y2="12" />
               <polyline points="12 19 5 12 12 5" />
@@ -526,7 +610,12 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
                       key={run.id}
                       role="button"
                       tabIndex={0}
-                      onClick={() => openRunDetail(run)}
+                      onClick={() => { if (longPressedRef.current) { longPressedRef.current = false; return; } openRunDetail(run); }}
+                      onPointerDown={() => startRunLongPress(run)}
+                      onPointerUp={cancelRunLongPress}
+                      onPointerCancel={cancelRunLongPress}
+                      onPointerLeave={cancelRunLongPress}
+                      onContextMenu={(e) => { e.preventDefault(); setMenuRun(run); }}
                       className="p-3.5 rounded-2xl border flex flex-col gap-2.5 transition-all cursor-pointer active:scale-[0.99]"
                       style={{
                         backgroundColor: colors.surfaceContainerLowest,

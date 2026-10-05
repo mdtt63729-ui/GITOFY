@@ -62,6 +62,8 @@ export function useSecurityGate(ready: boolean, token: string | null): SecurityG
   const releaseRef = useRef<ReleaseInfo | null>(null);
   const lastTokenRef = useRef<string | null | undefined>(undefined);
   const suppressedRef = useRef(false);
+  // True once the user has actually touched the screen while the sheet is up.
+  const gestureRef = useRef(false);
   const lastRunRef = useRef(-1);
   const dismissedRef = useRef<string | null>(null);
   const [tick, setTick] = useState(0);
@@ -71,8 +73,33 @@ export function useSecurityGate(ready: boolean, token: string | null): SecurityG
   useEffect(() => {
     const onVis = () => { if (document.visibilityState === 'visible') setTick((t) => t + 1); };
     document.addEventListener('visibilitychange', onVis);
-    return () => document.removeEventListener('visibilitychange', onVis);
+    // Also poll while the app is open, so an APK uploaded to the release shows
+    // up within a minute instead of only after backgrounding or restarting.
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') setTick((t) => t + 1);
+    }, 60000);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.clearInterval(timer);
+    };
   }, []);
+
+  // Track a real touch so onDownload can refuse an automatic activation.
+  useEffect(() => {
+    if (!visible) {
+      gestureRef.current = false;
+      return;
+    }
+    const mark = () => { gestureRef.current = true; };
+    window.addEventListener('pointerdown', mark, { once: true });
+    window.addEventListener('touchstart', mark, { once: true });
+    window.addEventListener('click', mark, { once: true });
+    return () => {
+      window.removeEventListener('pointerdown', mark);
+      window.removeEventListener('touchstart', mark);
+      window.removeEventListener('click', mark);
+    };
+  }, [visible]);
 
   useEffect(() => {
     if (!ready) return;
@@ -133,6 +160,9 @@ export function useSecurityGate(ready: boolean, token: string | null): SecurityG
   }, [ready, token, tick]);
 
   const onDownload = useCallback(async () => {
+    // Safety net: a download may only ever start from an actual touch on the
+    // sheet, never from a synthetic/automatic activation.
+    if (!gestureRef.current) return;
     const info = releaseRef.current;
     if (!info) {
       // No metadata (e.g. private repo signed-out) — open the releases page.

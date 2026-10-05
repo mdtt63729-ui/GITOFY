@@ -292,11 +292,12 @@ function GitofyApp() {
       } else {
         fabAccumRef.current = delta;
       }
-      const fabThreshold = 8;
-      if (fabAccumRef.current >= fabThreshold) {
+      // Show it back the instant the finger moves up, and only slide it away
+      // after a deliberate downward scroll.
+      if (fabAccumRef.current >= 24) {
         setFabVisible(false);
         fabAccumRef.current = 0;
-      } else if (fabAccumRef.current <= -fabThreshold) {
+      } else if (fabAccumRef.current <= -1) {
         setFabVisible(true);
         fabAccumRef.current = 0;
       }

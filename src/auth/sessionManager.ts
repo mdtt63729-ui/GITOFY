@@ -63,7 +63,10 @@ class SessionManager {
   async init(): Promise<void> {
     if (this.initialized) return;
     this.initialized = true;
-    try {
+    // Read the stored session, retrying once: a transient storage failure used
+    // to look exactly like "no session", which signed the user out after a long
+    // time away from the app.
+    const restore = async () => {
       this.accounts = await tokenRepository.listAccounts();
       this.activeAccountId = await tokenRepository.getActiveAccountId();
       if (this.activeAccountId != null) {
@@ -71,10 +74,18 @@ class SessionManager {
         const active = this.accounts.find((a) => a.id === this.activeAccountId);
         this.scopes = active?.scopes ?? [];
       }
-      this.status = this.token ? 'authenticated' : 'logged_out';
+    };
+    try {
+      await restore();
     } catch {
-      this.status = 'logged_out';
+      try {
+        await new Promise((r) => setTimeout(r, 250));
+        await restore();
+      } catch {
+        // Really nothing readable — fall through to logged_out below.
+      }
     }
+    this.status = this.token ? 'authenticated' : 'logged_out';
     this.emit();
   }
 
