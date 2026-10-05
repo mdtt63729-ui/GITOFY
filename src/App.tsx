@@ -13,6 +13,7 @@ import {
 } from './types';
 import {
   fetchUserRepos,
+  clearGitHubCache,
   createGitHubRepo,
   deleteGitHubRepo,
   clearGitHubRepoContents,
@@ -40,7 +41,7 @@ import { M3GalleryScreen } from './screens/M3GalleryScreen';
 import { MotionLabScreen } from './screens/MotionLabScreen';
 import { RepoActionResultScreen, RepoActionKind } from './screens/RepoActionResultScreen';
 import { OnboardingScreen } from './screens/OnboardingScreen';
-import { PageTransition } from './ui/transitions/PageTransition';
+import { PageTransition, type NavDirection } from './ui/transitions/PageTransition';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import { AuthConfig, isGitHubApp } from './auth/config';
 import { LoginScreen } from './screens/login/LoginScreen';
@@ -50,6 +51,35 @@ import { AppLockScreen } from './screens/AppLockScreen';
 import { AccountSwitcherSheet } from './screens/AccountSwitcherSheet';
 import { SecurityOverlay } from './screens/security/SecurityOverlay';
 import { repoOwnerLogin, repoOwnerAvatar } from './utils/repo';
+
+/**
+ * How deep each screen sits in the navigation stack. Going deeper is a forward
+ * push (page enters from the right); coming back up is a back press (page is
+ * revealed from the left). Derived here so no call site has to say which it is.
+ */
+const SCREEN_DEPTH: Record<string, number> = {
+  onboarding: 0,
+  login: 0,
+  permissions: 0,
+  login_diagnostics: 0,
+  app_lock: 0,
+  home: 1,
+  inbox: 1,
+  settings: 2,
+  m3_gallery: 2,
+  motion_lab: 2,
+  repo_dashboard: 2,
+  zip_analysis: 3,
+  upload: 3,
+  upload_flow: 3,
+  result: 3,
+  workflows: 3,
+  workflow_run_detail: 4,
+  delete_repo: 3,
+  repo_action: 3,
+  repo_files: 3,
+  repo_commits: 3,
+};
 
 function GitofyApp() {
   const { settings, triggerHaptic, colors } = useTheme();
@@ -132,6 +162,22 @@ function GitofyApp() {
 
   // Scroll-Reactive UI Engine State (§৭)
   const [isNavVisible, setIsNavVisible] = useState(true);
+
+  // Navigation direction for the page transition: deeper = forward, shallower =
+  // back, and a primary-tab switch is a lighter cross-fade. Computed during
+  // render from the previous screen (the ref is only advanced after commit), so
+  // the very first frame of the new page already knows which way to move.
+  const prevScreenRef = useRef<AppScreen>(currentScreen);
+  const depthOf = (screen: AppScreen) => SCREEN_DEPTH[screen] ?? 1;
+  const navDirection: NavDirection =
+    currentScreen === 'home' && prevScreenRef.current === 'home'
+      ? 'tab'
+      : depthOf(currentScreen) >= depthOf(prevScreenRef.current)
+      ? 'forward'
+      : 'back';
+  useEffect(() => {
+    prevScreenRef.current = currentScreen;
+  }, [currentScreen]);
   const [isFabVisible, setIsFabVisible] = useState(false);
   const scrollAccumRef = useRef(0);
 
@@ -190,6 +236,26 @@ function GitofyApp() {
       loadRepositories();
     }
   }, [loadRepositories, settings.personalAccessToken]);
+
+  // Android hardware back. The native shell dispatches an `androidback` window
+  // event (MainActivity.onBackPressed) but nothing listened for it, so the
+  // hardware back button did nothing at all. Route it through the same stack so
+  // it plays the reverse page transition.
+  useEffect(() => {
+    const onAndroidBack = () => {
+      if (currentScreen === 'home' && currentTab === 'inbox') { setCurrentTab('home'); return; }
+      if (currentScreen === 'home') return;
+      if (currentScreen === 'repo_files' || currentScreen === 'repo_commits' || currentScreen === 'workflows'
+        || currentScreen === 'repo_action' || currentScreen === 'delete_repo'
+        || currentScreen === 'zip_analysis' || currentScreen === 'upload' || currentScreen === 'result'
+        || currentScreen === 'upload_flow') {
+        if (selectedRepo) { setCurrentScreen('repo_dashboard'); return; }
+      }
+      setCurrentScreen('home');
+    };
+    window.addEventListener('androidback', onAndroidBack);
+    return () => window.removeEventListener('androidback', onAndroidBack);
+  }, [currentScreen, currentTab, selectedRepo]);
 
   // Scroll-Reactive Handler: keep high-frequency scroll work outside React state.
   const handleScrollDelta = useCallback((scrollTop: number, delta: number) => {
@@ -347,6 +413,7 @@ function GitofyApp() {
     setIsNavVisible(false);
     try {
       await clearGitHubRepoContents(repoOwnerLogin(repo), repo.name, repo.default_branch || 'main', settings.personalAccessToken);
+      clearGitHubCache();
       setRepos((prev) => prev.map((r) => r.id === repo.id ? { ...r, last_commit: undefined, action_status: null, updated_at: new Date().toISOString() } : r));
       setRepoActionCompleted(true);
       setInboxItems((prev) => [{
@@ -544,6 +611,7 @@ function GitofyApp() {
       {/* Screen Switcher with Fluid Material 3 Page Transitions */}
       <PageTransition
         viewKey={currentScreen + (currentScreen === 'home' ? currentTab : '')}
+        direction={navDirection}
       >
         {currentScreen === 'home' && currentTab === 'home' && (
           <HomeScreen

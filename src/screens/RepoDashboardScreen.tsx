@@ -3,10 +3,10 @@ import { useTheme } from '../ui/ThemeContext';
 import { openExternal } from '../utils/external';
 import { Repository, GitHubRelease, ReleaseAsset } from '../types';
 import { M3Button } from '../ui/m3/M3Button';
+import { SkeletonRows } from '../ui/m3/SkeletonRows';
 import { M3IconButton } from '../ui/m3/M3IconButton';
 import { fetchRepoReleases, fetchRepoLanguages } from '../git/githubApi';
 import { repoOwnerLogin, repoOwnerAvatar } from '../utils/repo';
-import { SkeletonRows } from '../ui/m3/SkeletonRows';
 
 export interface RepoDashboardScreenProps {
   repo: Repository;
@@ -70,6 +70,14 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
   const [activeLanguages, setActiveLanguages] = useState<Array<{ name: string; percentage: number; color: string }>>(
     repo.languages || []
   );
+  // Show structure immediately when a repository is opened, then fade the real
+  // content in — never a blank page while the first requests are in flight.
+  const [booting, setBooting] = useState(true);
+  useEffect(() => {
+    setBooting(true);
+    const t = window.setTimeout(() => setBooting(false), 700);
+    return () => window.clearTimeout(t);
+  }, [repo.id]);
 
   // Load real language breakdown on mount
   useEffect(() => {
@@ -507,7 +515,10 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
         </div>
       </div>
 
-      <div className="p-5 flex flex-col gap-4 pb-28">
+      {booting && (
+        <div className="p-5"><SkeletonRows count={4} height={92} /></div>
+      )}
+      <div className={"p-5 flex flex-col gap-4 pb-28 " + (booting ? "hidden" : "gitofy-reveal")}>
         {/* Navigation Tabs: Overview vs Releases */}
         <div className="repo-tab-switcher flex items-center p-1 rounded-2xl border relative overflow-hidden" style={{ backgroundColor: colors.surfaceContainerLowest, borderColor: colors.outlineVariant }}>
           <span className={`repo-tab-indicator ${activeTab === 'releases' ? 'repo-tab-indicator-right' : ''}`} style={{ backgroundColor: colors.primary }} />

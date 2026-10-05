@@ -131,7 +131,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
 
   return (
     <div
-      className="relative flex-1 flex flex-col select-none overflow-hidden"
+      className="gitofy-onboard-in relative flex-1 flex flex-col select-none overflow-hidden"
       style={{ backgroundColor: colors.background, color: colors.onBackground }}
       onTouchStart={onTouchStart}
       onTouchMove={onTouchMove}
@@ -232,7 +232,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
       </div>
 
       {/* Dots */}
-      <div className="relative flex items-center justify-center gap-2 py-5">
+      <div className="gitofy-onboard-rise-1 relative flex items-center justify-center gap-2 py-5">
         {pages.map((page, i) => (
           <button
             key={page.key}
@@ -252,7 +252,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
 
       {/* Actions */}
       <div
-        className="relative px-6 flex flex-col gap-2.5"
+        className="gitofy-onboard-rise-2 relative px-6 flex flex-col gap-2.5"
         style={{ paddingBottom: 'max(22px, env(safe-area-inset-bottom))' }}
       >
         <M3Button

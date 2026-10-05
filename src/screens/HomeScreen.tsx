@@ -25,6 +25,9 @@ export interface HomeScreenProps {
   setSelectedRepoIds: React.Dispatch<React.SetStateAction<number[]>>;
 }
 
+// Repository cards that have already animated in during this app session.
+const revealedRepoIds = new Set<number>();
+
 export const HomeScreen: React.FC<HomeScreenProps> = ({
   repos,
   isLoading,
@@ -76,6 +79,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   }, [measureChipIndicator, repos.length]);
 
   // Reveal each repository box as it scrolls into view (scroll animation).
+  // Cards already revealed stay revealed across visits, so coming back from a
+  // repository does not replay the animation on every card ("icons reload").
   useEffect(() => {
     const root = scrollContainerRef.current;
     const revealAll = () => {
@@ -89,6 +94,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
+            const id = Number((entry.target as HTMLElement).dataset.repoId || 0);
+            if (id) revealedRepoIds.add(id);
             entry.target.classList.add('repo-card-revealed');
             observer.unobserve(entry.target);
           }
@@ -97,7 +104,14 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       { root, rootMargin: '0px 0px -28px 0px', threshold: 0.05 }
     );
     revealObserverRef.current = observer;
-    root.querySelectorAll('.repo-card').forEach((el) => observer.observe(el));
+    root.querySelectorAll('.repo-card').forEach((el) => {
+      const id = Number((el as HTMLElement).dataset.repoId || 0);
+      if (id && revealedRepoIds.has(id)) {
+        el.classList.add('repo-card-revealed');
+        return;
+      }
+      observer.observe(el);
+    });
     // Safety: if the observer never fires (unexpected WebView quirk) reveal every
     // card so the list can never be left blank / untappable.
     const safety = window.setTimeout(() => {
@@ -524,6 +538,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 <div
                   key={repo.id}
                   ref={observeCard}
+                  data-repo-id={repo.id}
                   onClick={() => {
                     if (longPressTriggeredRef.current) {
                       longPressTriggeredRef.current = false;

@@ -1022,7 +1022,15 @@ export async function clearGitHubRepoContents(owner: string, repo: string, branc
   const entries = Array.isArray(tree.tree) ? tree.tree : [];
   const deletions = entries
     .filter((entry: { type?: string; path?: string }) => (entry.type === 'blob' || entry.type === 'commit') && entry.path)
-    .map((entry: { path: string }) => ({ path: entry.path, mode: '100644', type: 'blob', sha: null }));
+    .map((entry: { path: string; mode?: string; type?: string }) => ({
+      path: entry.path,
+      // Keep each entry's real mode (100644 / 100755 / 160000). GitHub rejects a
+      // tree entry whose mode does not match the file being removed, which made
+      // the whole cleanup commit fail.
+      mode: entry.mode || '100644',
+      type: entry.type === 'commit' ? 'commit' : 'blob',
+      sha: null,
+    }));
 
   if (deletions.length === 0) return headSha;
 
@@ -1097,6 +1105,10 @@ interface GitHubResponseMeta {
 }
 
 const etagCache = new Map<string, { etag: string; data: unknown; fetchedAt: number }>();
+
+/** Drop every cached GitHub response. Call after a write (upload, delete) so the
+ *  next read reflects the change instead of replaying a stale 304. */
+export function clearGitHubCache(): void { etagCache.clear(); }
 let rateLimitState: GitHubResponseMeta = { etag: null, remaining: null, limit: null, reset: null, retryAfter: null, notModified: false };
 
 export function getGitHubRateLimitState(): GitHubResponseMeta { return { ...rateLimitState }; }

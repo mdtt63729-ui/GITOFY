@@ -1046,3 +1046,38 @@ html[data-ui-mode='nxt'] button[data-m3='icon-button'] {
   .gitofy-screen-in, .gitofy-screen-in-bounce, .gitofy-search-in { animation: none !important; }
   .repo-card { transition: none !important; }
 }
+
+/* Drop-down menu that unfolds from the top-right (run-actions 3-dot button). */
+@keyframes gitofyDropIn {
+  0% { opacity: 0; transform: translateY(-12px) scale(.92); }
+  100% { opacity: 1; transform: none; }
+}
+.gitofy-drop-in { animation: gitofyDropIn 260ms cubic-bezier(.22, 1.04, .36, 1) both; transform-origin: top right; }
+
+@media (prefers-reduced-motion: reduce) {
+  .gitofy-drop-in { animation: none !important; }
+}
+
+/* ------------------------------------------------------------------
+ * Onboarding entrance: the carousel slides up into place with a springy
+ * overshoot, then the dots and the action buttons rise in just behind it.
+ * ------------------------------------------------------------------ */
+@keyframes gitofyOnboardIn {
+  0% { opacity: 0; transform: translateY(58px) scale(.965); }
+  62% { opacity: 1; transform: translateY(-8px) scale(1.004); }
+  100% { opacity: 1; transform: none; }
+}
+.gitofy-onboard-in { animation: gitofyOnboardIn 640ms cubic-bezier(.22, .95, .3, 1) both; will-change: transform, opacity; }
+
+@keyframes gitofyOnboardRise {
+  0% { opacity: 0; transform: translateY(28px); }
+  100% { opacity: 1; transform: none; }
+}
+.gitofy-onboard-rise-1 { animation: gitofyOnboardRise 520ms cubic-bezier(.22, .95, .3, 1) 170ms both; }
+.gitofy-onboard-rise-2 { animation: gitofyOnboardRise 560ms cubic-bezier(.22, .95, .3, 1) 270ms both; }
+
+@media (prefers-reduced-motion: reduce) {
+  .gitofy-onboard-in,
+  .gitofy-onboard-rise-1,
+  .gitofy-onboard-rise-2 { animation: none !important; }
+}

@@ -446,3 +446,82 @@ native splash — so the ONLY onboarding the user sees is the five-page
   and label size `0.95rem` → `0.88rem`.
 - The animated icon ring (orbits + glow + refresh glyph) sits lower: `mt-5` was
   added above it, so it is no longer crowded against the "Update available" label.
+
+## FAB slide, run-detail skeleton/menu/back, repo skeleton, delete fix (this revision)
+
+1. **The FAB never actually slid — real root cause found.** Tailwind v4 compiles
+   `translate-x-24` to the CSS `translate` property, but the FAB's transition
+   only listed `transform`. A `transform`-only transition never animates
+   `translate`, so the FAB snapped in and out instead of sliding. It now uses an
+   explicit inline `transform: translateX(104px)` / `translateX(0)` with a
+   springy overshoot, so scrolling up brings it back with a real slide + bounce
+   and scrolling down slides it away.
+
+2. **Run detail shows a skeleton the moment it opens** (`loading && jobs.length
+   === 0`), instead of an empty "Jobs & Steps · 0".
+
+3. **The 3-dot menu now drops in from the top-right.** It was anchored to the
+   bottom and sat behind a full-screen `backdrop-filter: blur(18px)` scrim, which
+   is very expensive in a WebView and made it feel laggy. The blur is gone from
+   that scrim and the menu unfolds under the button (`.gitofy-drop-in`).
+
+4. **Back leaves immediately.** A `leavingRef` stops both pollers the instant
+   Back is tapped, so no in-flight request can hold the screen open.
+
+5. **Opening a repository shows a boot skeleton** (700 ms) then fades the real
+   content in, instead of flashing an empty page.
+
+6. **Repository cards no longer replay their entrance on return.** Revealed card
+   ids are remembered in a session Set, so coming back from a repository keeps
+   the list settled ("icons reload" fixed) while newly scrolled cards still
+   animate in.
+
+7. **Delete-contents hardened.** Each deletion entry now keeps its real file mode
+   (100644 / 100755 / 160000) — GitHub rejects a tree entry whose mode does not
+   match, which made the whole cleanup commit fail. Added `clearGitHubCache()`,
+   called after a clear, so the next read shows the emptied repository instead of
+   a cached 304.
+
+## Onboarding entrance animation (this revision)
+
+The onboarding carousel had no entrance at all — it simply appeared. It now has
+a smooth, bouncy slide-up:
+
+- `.gitofy-onboard-in` on the root: the whole screen slides up from 58px below
+  with a springy overshoot (`cubic-bezier(.22,.95,.3,1)`, 640ms), so it settles
+  into place rather than just appearing.
+- `.gitofy-onboard-rise-1` / `-2` stagger the dots and the action buttons in
+  just behind it (170ms / 270ms).
+- Transform + opacity only, with reduced-motion handling.
+
+## Universal full-screen page transition system (this revision)
+
+Implemented the Page Transition PRD as ONE reusable system — every full-screen
+page goes through `src/ui/transitions/PageTransition.tsx`, so the motion is
+identical everywhere instead of each screen inventing its own.
+
+- **Forward** (deeper screen): the new page enters from the right edge
+  (X +100% → 0, opacity .92 → 1, scale .98 → 1).
+- **Back** (shallower screen): the previous page is revealed from the left
+  (X −26% → 0, opacity .92 → 1).
+- **Tabs** (Home ⇄ Library): a lighter, faster cross-fade instead of the
+  horizontal push, as the PRD requires.
+- Direction is *derived*, never hard-coded: `SCREEN_DEPTH` in `App.tsx` gives
+  every screen a stack depth, and going deeper is forward, shallower is back.
+- **300 ms**, `cubic-bezier(.16,1,.3,1)` — fast start, smooth deceleration, soft
+  settle. **No overshoot, no bounce, no rotation.**
+- All values live in one `PAGE_TRANSITION` config object (duration, easing,
+  offsets, scales, fade, tab timing, reduced-motion timing).
+- No white/black flash: the transition container's background is the theme
+  surface, so a page sliding in never reveals a blank frame.
+- Taps are blocked while the page is still moving, so a double tap can never
+  push two screens.
+- Reduced motion → a short 140 ms fade with almost no travel.
+- **Popups are untouched.** Dialogs, bottom sheets, the FAB menu and the update
+  sheet keep their own animations and are never routed through this system.
+
+Also fixed a real bug: the native shell already dispatched an `androidback`
+window event from `MainActivity.onBackPressed`, but nothing in the web layer
+listened for it — so the Android hardware back button did nothing at all. It now
+walks the same stack (detail → repository → home) and therefore plays the
+reverse page transition.

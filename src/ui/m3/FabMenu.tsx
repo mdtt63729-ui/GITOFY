@@ -120,21 +120,24 @@ export const FabMenu: React.FC<FabMenuProps> = ({
 
       {/* FAB and Items Container anchored at bottom right */}
       <div
-        className={`gitofy-fab fixed right-4 z-[70] flex flex-col items-end ${
-          visible || isOpen ? 'translate-x-0 opacity-100' : 'translate-x-24 opacity-0'
-        }`}
+        className="gitofy-fab fixed right-4 z-[70] flex flex-col items-end"
         style={{
           // Inline, so no stylesheet rule can win. The container must ignore
           // touches (its empty area used to swallow scrolls), while the button
           // below re-enables them for itself.
           pointerEvents: 'none',
           bottom: 'calc(92px + env(safe-area-inset-bottom))',
-          // Explicit transition properties (instead of transition-all) keep the
-          // WebView compositing only transform/opacity, which removes the lag.
+          // NOTE: Tailwind v4 emits `translate-x-*` as the CSS `translate`
+          // property, which a `transform`-only transition never animates — so the
+          // FAB used to snap in/out instead of sliding. Drive it with an explicit
+          // transform instead, and give it a springy overshoot so it bounces back
+          // into place when you scroll up.
+          opacity: visible || isOpen ? 1 : 0,
+          transform: visible || isOpen ? 'translateX(0) scale(1)' : 'translateX(104px) scale(0.9)',
           transitionProperty: 'transform, opacity',
-          transitionDuration: visible || isOpen ? '340ms' : '200ms',
+          transitionDuration: visible || isOpen ? '380ms' : '220ms',
           transitionTimingFunction: visible || isOpen
-            ? 'cubic-bezier(0.34, 1.45, 0.64, 1)'
+            ? 'cubic-bezier(0.34, 1.56, 0.64, 1)'
             : 'cubic-bezier(0.4, 0, 1, 1)',
           willChange: 'transform, opacity',
         }}
