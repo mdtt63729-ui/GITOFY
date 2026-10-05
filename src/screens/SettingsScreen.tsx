@@ -7,6 +7,7 @@ import { M3Slider } from '../ui/m3/M3Slider';
 import { M3TextField } from '../ui/m3/M3TextField';
 import { M3IconButton } from '../ui/m3/M3IconButton';
 import { validateGitHubToken } from '../git/githubApi';
+import { openExternal } from '../utils/external';
 import { AuthConfig, isGitHubApp, isWebFlowConfigured } from '../auth/config';
 import { WEB_FLOW_RISK_NOTICE } from '../auth/webPkce';
 import type { GitHubAccount } from '../auth/types';
@@ -480,11 +481,19 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 {isWebFlowConfigured() ? WEB_FLOW_RISK_NOTICE : 'Not available — this build uses the Device Flow only (no client secret is embedded).'}
               </p>
             </div>
-            <M3Switch
-              checked={settings.enableWebFlow && isWebFlowConfigured()}
-              disabled={!isWebFlowConfigured()}
-              onChange={(val) => updateSettings({ enableWebFlow: val })}
-            />
+            {isWebFlowConfigured() ? (
+              <M3Switch
+                checked={settings.enableWebFlow}
+                onChange={(val) => updateSettings({ enableWebFlow: val })}
+              />
+            ) : (
+              <span
+                className="text-[10px] font-bold px-2.5 py-1 rounded-full whitespace-nowrap"
+                style={{ backgroundColor: colors.surfaceContainerHighest, color: colors.onSurfaceVariant }}
+              >
+                Not available
+              </span>
+            )}
           </div>
 
           <div className="flex flex-col gap-2 border-t pt-3">
@@ -500,15 +509,14 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <M3Button variant="filled" shape="capsule" size="compact" loading={isValidating} onClick={handleValidateAndSaveToken}>
                 Verify &amp; Save Token
               </M3Button>
-              <a
-                href="https://github.com/settings/tokens/new?scopes=repo,workflow,delete_repo,notifications&description=Gitufy"
-                target="_blank"
-                rel="noreferrer"
-                className="text-xs font-semibold px-2 py-1 rounded hover:underline"
-                style={{ color: colors.primary }}
+              <button
+                type="button"
+                onClick={() => openExternal('https://github.com/settings/tokens/new?scopes=repo,workflow,delete_repo,notifications&description=Gitufy')}
+                className="text-xs font-semibold px-2 py-1 rounded hover:underline cursor-pointer"
+                style={{ color: colors.primary, background: 'transparent', border: 0 }}
               >
                 Generate Token ↗
-              </a>
+              </button>
             </div>
             {statusMessage && (
               <p className="text-xs font-bold animate-fade-in" style={{ color: statusMessage.error ? colors.error : colors.diffAdded }}>

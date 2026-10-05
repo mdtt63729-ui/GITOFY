@@ -654,3 +654,31 @@ Also:
 
 4. **The app's first appearance is a gentle fade+rise**, not a full-width slide
    — the slide was leaving a blank frame for a moment on cold start.
+
+## Workflow runs list, repo fade-in, update popup, Settings Advanced (this revision)
+
+1. **A dispatched run no longer disappears from the list.** `handleDispatch`
+   prepended an optimistic run, then `loadRuns` and the 30 s poll REPLACED the
+   whole list with GitHub's answer — which lags several seconds behind the
+   dispatch — so the new run blinked out and Refresh did not bring it back.
+   The pending run is now held in a ref and merged into every refresh until a
+   real run with that timestamp actually arrives, and the app re-checks at
+   2.5 s / 6 s / 12 s / 20 s after dispatching.
+
+2. **Repository cards fade in after the skeleton.** The reveal effect only
+   depended on `filter`, so the cards that mounted *after* the load were never
+   observed — they only appeared via the 1.5 s safety net, i.e. instantly with
+   no fade. `isLoading` and `repos.length` are now dependencies, so the freshly
+   loaded cards animate in smoothly.
+
+3. **The update popup is no longer laggy or preceded by a blank flash.** Its
+   scrim used a full-screen `backdrop-filter: blur(14px)`, which is very
+   expensive inside a WebView and was the lag. The blur is now applied only
+   after the entrance has settled (same look, smooth open), and the overlay
+   carries a dim base from the first frame so nothing flashes white.
+
+4. **Settings → Advanced.** "Generate Token ↗" was a raw `<a target="_blank">`,
+   which the WebView can swallow; it now goes through the app's external opener
+   like every other link. The Web Flow switch was permanently disabled (no
+   client secret is embedded) and just looked broken — it now shows a clear
+   "Not available" state instead.

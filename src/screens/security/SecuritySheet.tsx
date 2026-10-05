@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useT } from '../../i18n/strings';
 import { M3Dark, M3Danger } from './palette';
 import { SheetPrimaryButton, SheetSecondaryButton, SheetProgress } from './sheetUi';
@@ -46,15 +46,34 @@ export const SecuritySheet: React.FC<SecuritySheetProps> = ({
 }) => {
   const t = useT();
 
+  // A full-screen backdrop blur is very expensive inside a WebView and was
+  // what made this popup lag. It is only applied once the entrance has
+  // settled, so the look is unchanged but the opening is smooth.
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    const id = window.setTimeout(() => setSettled(true), 560);
+    return () => window.clearTimeout(id);
+  }, []);
+
   const busy = phase === 'downloading' || phase === 'installing';
   const pct = Math.max(0, Math.min(100, Math.round(progress)));
   const showLater = !busy && phase !== 'done';
 
   return (
-    <div className="fixed inset-0 z-[120] flex flex-col justify-end" role="dialog" aria-modal="true">
+    <div
+      className="fixed inset-0 z-[120] flex flex-col justify-end"
+      role="dialog"
+      aria-modal="true"
+      // A dim base from the very first frame, so there is never a white /
+      // blank flash while the sheet slides up.
+      style={{ backgroundColor: 'rgba(0,0,0,0.28)' }}
+    >
       <div
         className="absolute inset-0 animate-fade-in"
-        style={{ backgroundColor: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)' }}
+        style={{
+          backgroundColor: 'rgba(0,0,0,0.55)',
+          ...(settled ? { backdropFilter: 'blur(14px)', WebkitBackdropFilter: 'blur(14px)' } : {}),
+        }}
         onClick={() => {
           if (showLater) onLater?.();
         }}

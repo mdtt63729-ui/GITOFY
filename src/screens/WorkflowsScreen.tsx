@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../ui/ThemeContext';
 import { WorkflowItem, WorkflowRun } from '../types';
 import { M3Button } from '../ui/m3/M3Button';
@@ -33,6 +33,9 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
   const [selectedBranch, setSelectedBranch] = useState(settings.defaultBranch || 'main');
   const [artifactsMap, setArtifactsMap] = useState<Record<number, any[]>>({});
   const [loadingArtifactsRunId, setLoadingArtifactsRunId] = useState<number | null>(null);
+  // A run we just dispatched, kept in the list until GitHub actually lists it
+  // (which takes a few seconds), so it never blinks out of view.
+  const pendingRunRef = useRef<WorkflowRun | null>(null);
   const [detailWorkflow, setDetailWorkflow] = useState<WorkflowItem | null>(null);
   const [detailRun, setDetailRun] = useState<WorkflowRun | null>(null);
   const [statusNotification, setStatusNotification] = useState<{
@@ -62,7 +65,7 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
         setSelectedWorkflow(target);
         const workflowKey = target.path ? target.path.split('/').pop() || target.id : target.id;
         const freshRuns = await fetchWorkflowRuns(owner, repo, workflowKey, settings.personalAccessToken);
-        setRuns(freshRuns);
+        setRuns(withPendingRun(freshRuns));
       }
     } catch (err: unknown) {
       console.warn('Failed to load workflows:', err);
@@ -80,7 +83,7 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
         try {
           const workflowKey = selectedWorkflow.path ? selectedWorkflow.path.split('/').pop() || selectedWorkflow.id : selectedWorkflow.id;
           const fresh = await fetchWorkflowRuns(owner, repo, workflowKey, settings.personalAccessToken);
-          setRuns(fresh);
+          setRuns(withPendingRun(fresh));
         } catch {
           // Silent background refresh; visible state remains usable.
         }
@@ -88,6 +91,20 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
     }, 30000);
     return () => window.clearInterval(timer);
   }, [selectedWorkflow?.id, owner, repo, settings.personalAccessToken]);
+
+  /** Keep a just-dispatched run visible until GitHub actually reports it. */
+  const withPendingRun = (fresh: WorkflowRun[]): WorkflowRun[] => {
+    const pending = pendingRunRef.current;
+    if (!pending) return fresh;
+    const arrived = fresh.some(
+      (r) => new Date(r.created_at).getTime() >= new Date(pending.created_at).getTime() - 60000
+    );
+    if (arrived) {
+      pendingRunRef.current = null;
+      return fresh;
+    }
+    return [pending, ...fresh];
+  };
 
   const loadRuns = async (wf: WorkflowItem) => {
     setIsLoadingRuns(true);
@@ -99,7 +116,7 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
         workflowKey,
         settings.personalAccessToken
       );
-      setRuns(runsData);
+      setRuns(withPendingRun(runsData));
     } catch (err: unknown) {
       console.warn('Failed to load runs:', err);
     } finally {
@@ -118,7 +135,7 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
     try {
       const workflowKey = wf.path ? wf.path.split('/').pop() || wf.id : wf.id;
       const freshRuns = await fetchWorkflowRuns(owner, repo, workflowKey, settings.personalAccessToken);
-      setRuns(freshRuns);
+      setRuns(withPendingRun(freshRuns));
     } catch (err: unknown) {
       setStatusNotification({ text: err instanceof Error ? err.message : 'Could not load workflow runs.', isError: true });
     } finally {
@@ -194,12 +211,14 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
         },
       };
 
+      pendingRunRef.current = optimisticRun;
       setRuns((prev) => [optimisticRun, ...prev]);
 
-      // Poll after 3 seconds for GitHub runner confirmation
-      setTimeout(() => {
-        loadRuns(wf);
-      }, 3500);
+      // GitHub needs a few seconds to publish the new run, so refresh a few
+      // times and keep the pending entry until the real one appears.
+      [2500, 6000, 12000, 20000].forEach((delay) => {
+        window.setTimeout(() => { void loadRuns(wf); }, delay);
+      });
     } catch (err: unknown) {
       triggerHaptic('error');
       const msg = err instanceof Error ? err.message : 'Dispatch failed';

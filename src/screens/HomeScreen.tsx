@@ -131,7 +131,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
       revealObserverRef.current = null;
       window.clearTimeout(safety);
     };
-  }, [filter]);
+    // isLoading/repos.length matter: the cards do not exist until the load
+    // finishes, so without them nothing was ever observed and the list only
+    // appeared via the safety net — with no fade at all.
+  }, [filter, isLoading, repos.length]);
 
   const observeCard = useCallback((el: HTMLDivElement | null) => {
     if (el) revealObserverRef.current?.observe(el);
