@@ -413,7 +413,6 @@ class MainActivity : AppCompatActivity() {
          * The deep link that launched the app, consumed exactly once so a
          * rotation or a resume does not navigate again.
          */
-        @JavascriptInterface
         fun getInitialDeepLink(): String {
             val link = pendingDeepLink ?: return ""
             pendingDeepLink = null
@@ -742,9 +741,14 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        val uri = intent.data ?: return
-        if (uri.scheme != "gitofy" || uri.host != "repo") return
-        emitDeepLink(uri.toString())
+        // gitofy://repo/... links are forwarded to the web layer as a window event.
+        intent.data?.let { uri ->
+            if (uri.scheme == "gitofy" && uri.host == "repo") {
+                emitDeepLink(uri.toString())
+            }
+        }
+        // The OAuth callback (gitofy://callback/...) is also forwarded to the web layer.
+        handleDeepLink(intent)
     }
 
     /** Hands a deep link to the web layer as a window event. */
@@ -889,10 +893,6 @@ class MainActivity : AppCompatActivity() {
         handleDeepLink(intent)
     }
 
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        handleDeepLink(intent)
-    }
 
     private fun handleDeepLink(intent: Intent?) {
         val data = intent?.data ?: return
