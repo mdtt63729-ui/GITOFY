@@ -137,7 +137,7 @@ export const RepoCodeScreen: React.FC<Props> = ({ repo, token, initialTab, onBac
 
   return (
     <div className="flex-1 min-h-0 flex flex-col gitofy-scroll animate-fade-in" style={{ backgroundColor: colors.surface }}>
-      <div className="sticky top-0 z-30 px-3 py-3 border-b flex items-center gap-2" style={{ backgroundColor: `${colors.surface}f5`, borderColor: colors.outlineVariant }}>
+      <div className="sticky top-0 z-30 px-3 py-3 border-b gitofy-topbar flex items-center gap-2" style={{ backgroundColor: `${colors.surface}f5`, borderColor: colors.outlineVariant }}>
         <M3IconButton aria-label="Back" onClick={onBack}><svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></M3IconButton>
         <div className="min-w-0 flex-1"><div className="text-sm font-black truncate">{repo.name}</div><div className="text-[10px] opacity-60">{tab === 'files' ? 'Files' : 'Commits'} · {repo.default_branch}</div></div>
         <M3IconButton aria-label="Refresh" onClick={() => tab === 'files' ? void loadTree() : void loadCommits()}><svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 11a8.1 8.1 0 0 0-14.9-4L3 10"/><path d="M3 5v5h5"/><path d="M4 13a8.1 8.1 0 0 0 14.9 4L21 14"/><path d="M21 19v-5h-5"/></svg></M3IconButton>

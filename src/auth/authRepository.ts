@@ -116,6 +116,24 @@ export class AuthRepository {
     return fetchProfile(token, 'oauth', 'device');
   }
 
+  /**
+   * Continue polling a device flow that was already started (and very likely
+   * already approved in the browser). Unlike loginWithDevice this does NOT
+   * request a new code — that would invalidate the approval the user just gave.
+   */
+  async resumeDeviceFlow(
+    session: { deviceCode: string; interval: number; expiresAt: number },
+    signal?: AbortSignal
+  ): Promise<ProfileResult> {
+    const token = await deviceFlowProvider.pollForToken(
+      { deviceCode: session.deviceCode, interval: session.interval, expiresAt: session.expiresAt },
+      {},
+      signal
+    );
+    await tokenRepository.setDeviceSession(null);
+    return fetchProfile(token, 'oauth', 'device');
+  }
+
   /** Fallback flow: a user-supplied Personal Access Token (§3.2). */
   async loginWithPat(token: string): Promise<ProfileResult> {
     const clean = token.trim();
@@ -141,7 +159,17 @@ export class AuthRepository {
       const profile = await fetchProfile(token, sessionManager.getActiveAccount()?.tokenKind ?? 'oauth', sessionManager.getActiveAccount()?.provider ?? 'device');
       await sessionManager.updateAccount({ ...profile.account, loginAt: sessionManager.getActiveAccount()?.loginAt ?? Date.now() });
     } catch (err) {
-      sessionManager.handleAuthError(err instanceof Error && 'code' in err ? (err as unknown as AuthError) : toAuthError(err));
+      const authError = err instanceof Error && 'code' in err ? (err as unknown as AuthError) : toAuthError(err);
+      // Grace period: the background validation fires on foreground, which is
+      // exactly when the user returns from the browser having just signed in.
+      // A transient failure there (or a profile read that races the new token)
+      // used to expire the brand-new session, dropping the user straight back
+      // to the login screen — which then sat on its "Signed in" view forever.
+      // A token we validated moments ago is trusted; anything else is handled
+      // normally.
+      const justSignedIn = Date.now() - (sessionManager.getActiveAccount()?.loginAt ?? 0) < 20000;
+      if (justSignedIn && authError.code === 'E_SESSION') return;
+      sessionManager.handleAuthError(authError);
     }
   }
 

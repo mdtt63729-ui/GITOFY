@@ -375,10 +375,44 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [beginPolling]);
 
+  /**
+   * Pick a device-flow login back up after the app has been in the background.
+   * The user approves the code in the browser, so on return we must continue
+   * polling the SAME code — and if a poll died while backgrounded, this heals
+   * it instead of leaving a DEVFLOW_network_error screen behind.
+   */
+  const resumePendingDeviceFlow = useCallback(async () => {
+    if (sessionManager.isAuthenticated() || abortRef.current) return;
+    try {
+      const pending = await tokenRepository.getDeviceSession();
+      if (!pending || pending.expiresAt <= Date.now()) return;
+      setAuthState({
+        status: 'polling',
+        userCode: pending.userCode,
+        verificationUri: pending.verificationUri,
+        expiresAt: pending.expiresAt,
+        interval: pending.interval,
+        scope: pending.scope,
+        isResumed: true,
+      });
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const result = await authRepository.resumeDeviceFlow(pending, controller.signal);
+      await authRepository.persist(result);
+      setAuthState({ status: 'success', account: result.account });
+    } catch {
+      // Non-fatal: the user can retry from the screen they are on.
+    } finally {
+      abortRef.current = null;
+    }
+  }, []);
+
   // Periodic lightweight health refresh (§7.3): daily + on foreground.
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
+      // Returning from the browser: resume a device login that is still open.
+      void resumePendingDeviceFlow();
       // The user has just come back from the browser (where they entered the
       // device code) — wake the poll loop immediately instead of waiting for the
       // next interval, so the app signs in the moment they return.
@@ -395,7 +429,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       document.removeEventListener('visibilitychange', onVisible);
       window.clearInterval(daily);
     };
-  }, []);
+  }, [resumePendingDeviceFlow]);
 
   const activeAccount = useMemo(
     () => session.accounts.find((a) => a.id === session.activeAccountId) ?? null,

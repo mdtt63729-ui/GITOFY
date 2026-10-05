@@ -110,7 +110,7 @@ export const RepoActionResultScreen: React.FC<Props> = ({
             : `radial-gradient(ellipse 80% 60% at 50% 0%, rgba(79,55,139,.25) 0%, transparent 70%), ${colors.surface}`, 
         }}
       >
-        <div className="flex-shrink-0 flex items-center gap-3 px-4 pt-[max(20px,env(safe-area-inset-top))] pb-3">
+        <div className="flex-shrink-0 flex items-center gap-3 px-4 pt-[max(20px,var(--gitofy-top-bar))] pb-3">
           <div className="w-12 h-12 rounded-full flex items-center justify-center" style={{ color: colors.onSurface }}>
             <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2z"/><path d="M14 12h4M16 10v4"/></svg>
           </div>
@@ -188,7 +188,7 @@ export const RepoActionResultScreen: React.FC<Props> = ({
         background: `radial-gradient(ellipse 80% 60% at 50% 0%, ${colors.diffAddedContainer}66 0%, transparent 70%), ${colors.surface}`,
       }}
     >
-      <div className="flex-shrink-0 flex items-center gap-3 px-4 pt-[max(20px,env(safe-area-inset-top))] pb-3">
+      <div className="flex-shrink-0 flex items-center gap-3 px-4 pt-[max(20px,var(--gitofy-top-bar))] pb-3">
         <div className="w-12 h-12 rounded-full" />
         <h1 className="text-xl font-medium">Complete</h1>
       </div>

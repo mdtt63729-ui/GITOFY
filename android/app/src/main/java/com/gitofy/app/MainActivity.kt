@@ -314,6 +314,65 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        /**
+         * Real safe-area insets in CSS px (dp), measured from the display
+         * cutout and the system bars. The app is edge-to-edge, so
+         * env(safe-area-inset-*) is 0 inside the WebView on notched phones —
+         * this is how the web layer learns where the front camera actually is.
+         */
+        @JavascriptInterface
+        fun getSafeAreaInsets(): String {
+            return try {
+                val density = resources.displayMetrics.density.takeIf { it > 0f } ?: 1f
+                var top = 0
+                var bottom = 0
+                var left = 0
+                var right = 0
+                val decor = window.decorView
+                val insets = androidx.core.view.ViewCompat.getRootWindowInsets(decor)
+                if (insets != null) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        val bars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+                        val cut = insets.getInsets(WindowInsetsCompat.Type.displayCutout())
+                        top = maxOf(bars.top, cut.top)
+                        bottom = maxOf(bars.bottom, cut.bottom)
+                        left = maxOf(bars.left, cut.left)
+                        right = maxOf(bars.right, cut.right)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        top = insets.systemWindowInsetTop
+                        @Suppress("DEPRECATION")
+                        bottom = insets.systemWindowInsetBottom
+                        @Suppress("DEPRECATION")
+                        left = insets.systemWindowInsetLeft
+                        @Suppress("DEPRECATION")
+                        right = insets.systemWindowInsetRight
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                            val cut = insets.displayCutout
+                            if (cut != null) {
+                                top = maxOf(top, cut.safeInsetTop)
+                                bottom = maxOf(bottom, cut.safeInsetBottom)
+                                left = maxOf(left, cut.safeInsetLeft)
+                                right = maxOf(right, cut.safeInsetRight)
+                            }
+                        }
+                    }
+                }
+                if (top == 0) {
+                    val id = resources.getIdentifier("status_bar_height", "dimen", "android")
+                    if (id > 0) top = resources.getDimensionPixelSize(id)
+                }
+                JSONObject()
+                    .put("top", top / density)
+                    .put("bottom", bottom / density)
+                    .put("left", left / density)
+                    .put("right", right / density)
+                    .toString()
+            } catch (e: Exception) {
+                "{\"top\":0,\"bottom\":0,\"left\":0,\"right\":0}"
+            }
+        }
+
         @JavascriptInterface
         fun getAppVersion(): String {
             return try {

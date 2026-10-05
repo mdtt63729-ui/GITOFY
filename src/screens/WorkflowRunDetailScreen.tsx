@@ -45,7 +45,10 @@ export const WorkflowRunDetailScreen:React.FC<Props>=({repoName,workflow,initial
   const [run,setRun]=useState<WorkflowRun|null>(initialRun||null);
   const [jobs,setJobs]=useState<Job[]>([]); const [selectedJobId,setSelectedJobId]=useState<number|null>(null); const [selectedStep,setSelectedStep]=useState<number|null>(null);
   const [rawLog,setRawLog]=useState(''); const [loading,setLoading]=useState(true); const [error,setError]=useState<string|null>(null); const [now,setNow]=useState(Date.now());
-  const [connection,setConnection]=useState<'live'|'polling'|'offline'|'reconnecting'>('polling'); const [updatedAt,setUpdatedAt]=useState(Date.now()); const [rateBanner,setRateBanner]=useState<string|null>(null);
+  const [connection,setConnection]=useState<'live'|'polling'|'offline'|'reconnecting'>('polling');
+  // True only while a poll is genuinely in flight, so the header pill can
+  // cross-fade to "Polling" instead of flipping labels on every cycle.
+  const [polling,setPolling]=useState(false); const [updatedAt,setUpdatedAt]=useState(Date.now()); const [rateBanner,setRateBanner]=useState<string|null>(null);
   const [paused,setPaused]=useState(false); const [follow,setFollow]=useState(settings.liveRunsAutoFollow); const [search,setSearch]=useState(''); const [caseSensitive,setCaseSensitive]=useState(false); const [regex,setRegex]=useState(false); const [wrap,setWrap]=useState(settings.liveRunsWrap); const [showLines,setShowLines]=useState(true); const [showTs,setShowTs]=useState(settings.liveRunsTimestamps); const [showDebug,setShowDebug]=useState(settings.liveRunsDebugLines); const [fontSize,setFontSize]=useState(settings.liveRunsLogFontSize); const [stepFilter,setStepFilter]=useState<number|null>(null);
   const [actionBusy,setActionBusy]=useState(false); const [toast,setToast]=useState<string|null>(null);
   const [actionMenuOpen,setActionMenuOpen]=useState(false); const [jobsSkeleton,setJobsSkeleton]=useState(false);
@@ -76,7 +79,7 @@ export const WorkflowRunDetailScreen:React.FC<Props>=({repoName,workflow,initial
     const current=runRef.current;
     if(!current||leavingRef.current) return;
     try{
-      setConnection('polling');
+      setPolling(true);
       const [rr,jj]=await Promise.all([fetchWorkflowRunWithMeta(owner,repo,current.id,token),fetchWorkflowRunJobsWithMeta(owner,repo,current.id,token)]);
       setRun(rr.run); mergeJobs(jj.jobs as Job[]); setUpdatedAt(Date.now()); setConnection('live'); setError(null);
       const rl=getGitHubRateLimitState(); if(rl.remaining!==null&&rl.limit&&rl.remaining/rl.limit<.05) setRateBanner('GitHub rate limit is very low. Log tailing is paused to protect your token.'); else if(rl.remaining!==null&&rl.limit&&rl.remaining/rl.limit<.2) setRateBanner('GitHub rate limit is getting low. Refresh intervals are stretched.'); else setRateBanner(null);
@@ -84,7 +87,7 @@ export const WorkflowRunDetailScreen:React.FC<Props>=({repoName,workflow,initial
       if(lastRunState.current && lastRunState.current!==`${rr.run.status}:${rr.run.conclusion}` && rr.run.status==='completed') { triggerHaptic(rr.run.conclusion==='success'?'success':'error'); }
       lastRunState.current=`${rr.run.status}:${rr.run.conclusion}`;
     }catch(e){ setConnection('offline'); if(!silent) setError(e instanceof Error?e.message:'Could not load GitHub run.'); }
-    finally{if(!silent)setLoading(false)}
+    finally{setPolling(false);if(!silent)setLoading(false)}
   },[owner,repo,token,mergeJobs,triggerHaptic]);
 
   useEffect(()=>{
@@ -154,9 +157,9 @@ export const WorkflowRunDetailScreen:React.FC<Props>=({repoName,workflow,initial
 
   const runTone=toneOf({status:run?.status||'queued',conclusion:run?.conclusion||null}); const runColor=colorFor(runTone,colors);
   return <div className="flex-1 flex flex-col gitofy-scroll select-none" style={{backgroundColor:colors.surface}}>
-    <div className="sticky top-0 z-30 px-3 py-2.5 border-b" style={{backgroundColor:`${colors.surface}f5`,borderColor:colors.outlineVariant}}>
-      <div className="flex items-start gap-2"><M3IconButton aria-label="Back" onClick={()=>{leavingRef.current=true;onBack();}}><svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></M3IconButton><div className="min-w-0 flex-1"><h2 className="text-base font-black truncate">{workflow.name}</h2><p className="text-[10px] font-mono opacity-65 truncate">{repoName} · @{settings.githubUsername||'user'} · #{run?.run_number??'—'} · {run?.head_branch||'main'}</p></div><div className="flex flex-col items-end gap-1.5"><M3IconButton aria-label="Run actions" onClick={()=>{triggerHaptic('tick');setActionMenuOpen(v=>!v)}}><svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg></M3IconButton><span className="px-2 py-1 rounded-full text-[10px] font-black" style={{color:runColor,backgroundColor:`${runColor}22`}}>{statusText(runTone)}</span></div></div>
-      <div className="mt-2 flex items-center gap-2 overflow-x-auto"><span className="px-2.5 py-1 rounded-full text-[10px] font-bold whitespace-nowrap" style={{backgroundColor:connection==='live'?colors.diffAddedContainer:connection==='offline'?colors.errorContainer:colors.tertiaryContainer,color:connection==='live'?colors.diffAdded:connection==='offline'?colors.error:colors.tertiary}}>● {connection==='live'?'Live':connection==='reconnecting'?'Reconnecting':connection==='offline'?'Offline':'Polling'}{connection!=='live'?` · Updated ${Math.max(0,Math.floor((Date.now()-updatedAt)/1000))}s ago`:''}</span><span className="text-[10px] font-mono opacity-55 whitespace-nowrap">Elapsed {duration(run?.created_at,run?.status==='completed'?run.updated_at:null,now)}</span><button className="text-[10px] font-bold underline whitespace-nowrap" onClick={()=>openExternal(run?.html_url)}>GitHub ↗</button></div>
+    <div className="sticky top-0 z-30 px-3 py-2.5 border-b gitofy-topbar" style={{backgroundColor:`${colors.surface}f5`,borderColor:colors.outlineVariant}}>
+      <div className="flex items-start gap-2"><M3IconButton aria-label="Back" onClick={()=>{leavingRef.current=true;onBack();}}><svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg></M3IconButton><div className="min-w-0 flex-1"><h2 className="text-base font-black truncate">{workflow.name}</h2><p className="text-[10px] font-mono opacity-65 truncate">{repoName} · @{settings.githubUsername||'user'} · #{run?.run_number??'—'} · {run?.head_branch||'main'}</p></div><M3IconButton aria-label="Run actions" onClick={()=>{triggerHaptic('tick');setActionMenuOpen(v=>!v)}}><svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.9"/><circle cx="12" cy="12" r="1.9"/><circle cx="19" cy="12" r="1.9"/></svg></M3IconButton></div>
+      <div className="mt-2 flex items-center gap-2 overflow-x-auto"><span className="px-2.5 py-1 rounded-full text-[10px] font-bold whitespace-nowrap" style={{backgroundColor:connection==='offline'?colors.errorContainer:connection==='reconnecting'?colors.tertiaryContainer:colors.diffAddedContainer,color:connection==='offline'?colors.error:connection==='reconnecting'?colors.tertiary:colors.diffAdded}}><span className="relative inline-grid align-middle"><span style={{gridArea:'1 / 1',opacity:polling?0:1,transition:'opacity 220ms ease'}}>● {connection==='offline'?'Offline':connection==='reconnecting'?'Reconnecting':statusText(runTone)}</span><span style={{gridArea:'1 / 1',opacity:polling?1:0,transition:'opacity 220ms ease'}}>● Polling</span></span>{connection!=='live'?` · Updated ${Math.max(0,Math.floor((Date.now()-updatedAt)/1000))}s ago`:''}</span><span className="text-[10px] font-mono opacity-55 whitespace-nowrap">Elapsed {duration(run?.created_at,run?.status==='completed'?run.updated_at:null,now)}</span><button className="text-[10px] font-bold underline whitespace-nowrap" onClick={()=>openExternal(run?.html_url)}>GitHub ↗</button><span className="ml-auto px-2 py-1 rounded-full text-[10px] font-black whitespace-nowrap" style={{color:runColor,backgroundColor:`${runColor}22`}}>{statusText(runTone)}</span></div>
     </div>
     <div className="p-4 pb-28 flex flex-col gap-3">
       {rateBanner&&<div className="rounded-2xl border px-3 py-2 text-[11px] font-semibold" style={{backgroundColor:colors.tertiaryContainer,color:colors.onTertiaryContainer,borderColor:colors.outlineVariant}}>{rateBanner}</div>}
@@ -182,7 +185,7 @@ export const WorkflowRunDetailScreen:React.FC<Props>=({repoName,workflow,initial
 
     {actionMenuOpen && <>
       <div className="fixed inset-0 z-40" style={{backgroundColor:'rgba(0,0,0,.22)'}} onClick={()=>setActionMenuOpen(false)} />
-      <div className="fixed right-3 z-[70] flex flex-col items-end gap-2" style={{top:'calc(60px + env(safe-area-inset-top))'}}>
+      <div className="fixed right-3 z-[70] flex flex-col items-end gap-2" style={{top:'calc(var(--gitofy-top-bar) + 46px)'}}>
         {([
           {id:'refresh',label:'Refresh',bg:colors.primaryContainer,fg:colors.onPrimaryContainer,act:()=>void refreshAll()},
           {id:'cancel',label:'Cancel run',bg:colors.surfaceContainerHigh,fg:colors.onSurface,act:()=>void performAction('cancel')},

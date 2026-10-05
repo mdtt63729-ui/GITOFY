@@ -406,7 +406,7 @@ html[data-ui-mode='nxt'] body {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: max(16px, env(safe-area-inset-top)) 16px 16px;
+  padding: max(16px, var(--gitofy-top-bar)) 16px 16px;
   flex-shrink: 0;
 }
 .upload-ref-iconbtn {
@@ -470,11 +470,47 @@ html[data-ui-mode='nxt'] body {
 }
 
 /* Bouncy Material-style segmented repository tab transition. */
-.repo-tab-switcher { min-height: 50px; }
-.repo-tab-button { position: relative; z-index: 2; flex: 1; padding: 10px 8px; border: 0; background: transparent; border-radius: 14px; font-size: 12px; font-weight: 800; cursor: pointer; transition: color 180ms ease, transform 260ms cubic-bezier(.34,1.56,.64,1); }
+/* Overview <-> Releases switcher.
+   The sliding pill used to travel edge-to-edge, and its spring overshot past
+   the container, so the coloured part appeared to leave the box. It is now
+   inset by the 4px padding on BOTH sides and the container clips, so the pill
+   (and its bounce) always stays inside. The buttons share the same spring so
+   the whole switcher moves in sync. */
+.repo-tab-switcher {
+  position: relative;
+  min-height: 50px;
+  overflow: hidden;
+  border-radius: 18px;
+  isolation: isolate;
+}
+.repo-tab-button {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  padding: 10px 8px;
+  border: 0;
+  background: transparent;
+  border-radius: 14px;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: color 180ms ease, transform 320ms cubic-bezier(.34, 1.22, .64, 1);
+}
 .repo-tab-button:active { transform: scale(.96); }
-.repo-tab-indicator { position: absolute; z-index: 1; top: 4px; bottom: 4px; left: 4px; width: calc(50% - 4px); border-radius: 14px; transform: translateX(0); transition: transform 560ms cubic-bezier(.34,1.56,.64,1), box-shadow 300ms ease; box-shadow: 0 3px 10px rgba(0,0,0,.08); }
-.repo-tab-indicator-right { transform: translateX(100%); }
+.repo-tab-indicator {
+  position: absolute;
+  z-index: 1;
+  top: 4px;
+  bottom: 4px;
+  left: 4px;
+  width: calc(50% - 8px);
+  border-radius: 14px;
+  transform: translateX(0);
+  transition: transform 520ms cubic-bezier(.34, 1.18, .64, 1), box-shadow 300ms ease;
+  box-shadow: 0 3px 10px rgba(0,0,0,.08);
+  will-change: transform;
+}
+.repo-tab-indicator-right { transform: translateX(calc(100% + 8px)); }
 .repo-tab-content-enter { animation: repoTabContentIn 360ms cubic-bezier(.2,.9,.25,1.12) both; }
 @keyframes repoTabContentIn { from { opacity: .72; transform: translateY(8px) scale(.992); } 55% { opacity: 1; transform: translateY(-1px) scale(1.002); } to { opacity: 1; transform: translateY(0) scale(1); } }
 .workflow-status-dot { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 50%; display:flex; align-items:center; justify-content:center; border: 2px solid currentColor; font-weight:900; font-size:16px; }
@@ -642,7 +678,7 @@ html[data-ui-mode='nxt'] body {
    on every frame of the animation — that was the laggy header animation while
    scrolling. The bar height is now constant, so scrolling never shifts layout. */
 .gitofy-appbar {
-  padding-top: max(12px, env(safe-area-inset-top));
+  padding-top: max(12px, var(--gitofy-top-bar));
   padding-bottom: 8px;
   transition: box-shadow 300ms ease, background-color 150ms ease, border-color 150ms ease;
 }
@@ -677,8 +713,8 @@ html[data-ui-mode='nxt'] body {
   pointer-events: none;
   z-index: 0;
   will-change: transform, width;
-  transition: transform 420ms cubic-bezier(.34,1.56,.64,1),
-              width 420ms cubic-bezier(.34,1.56,.64,1),
+  transition: transform 620ms cubic-bezier(.34,1.42,.64,1),
+              width 620ms cubic-bezier(.34,1.42,.64,1),
               background-color 200ms ease;
 }
 
@@ -701,6 +737,8 @@ html[data-ui-mode='nxt'] body {
   opacity: 1;
   transform: none;
 }
+/* First paint of an already-visible card: no entrance, no flicker. */
+.repo-card.repo-card-instant { transition: none !important; }
 .repo-card:active {
   transform: scale(.98);
 }
@@ -1063,21 +1101,41 @@ html[data-ui-mode='nxt'] button[data-m3='icon-button'] {
  * overshoot, then the dots and the action buttons rise in just behind it.
  * ------------------------------------------------------------------ */
 @keyframes gitofyOnboardIn {
-  0% { opacity: 0; transform: translateY(58px) scale(.965); }
-  62% { opacity: 1; transform: translateY(-8px) scale(1.004); }
+  0% { opacity: 0; transform: translateY(46px) scale(.972); }
+  70% { opacity: 1; transform: translateY(-4px) scale(1.002); }
   100% { opacity: 1; transform: none; }
 }
-.gitofy-onboard-in { animation: gitofyOnboardIn 640ms cubic-bezier(.22, .95, .3, 1) both; will-change: transform, opacity; }
+.gitofy-onboard-in { animation: gitofyOnboardIn 980ms cubic-bezier(.16, .84, .26, 1) both; will-change: transform, opacity; }
 
 @keyframes gitofyOnboardRise {
   0% { opacity: 0; transform: translateY(28px); }
   100% { opacity: 1; transform: none; }
 }
-.gitofy-onboard-rise-1 { animation: gitofyOnboardRise 520ms cubic-bezier(.22, .95, .3, 1) 170ms both; }
-.gitofy-onboard-rise-2 { animation: gitofyOnboardRise 560ms cubic-bezier(.22, .95, .3, 1) 270ms both; }
+.gitofy-onboard-rise-1 { animation: gitofyOnboardRise 760ms cubic-bezier(.16, .84, .26, 1) 320ms both; }
+.gitofy-onboard-rise-2 { animation: gitofyOnboardRise 820ms cubic-bezier(.16, .84, .26, 1) 440ms both; }
 
 @media (prefers-reduced-motion: reduce) {
   .gitofy-onboard-in,
   .gitofy-onboard-rise-1,
   .gitofy-onboard-rise-2 { animation: none !important; }
+}
+
+/* ------------------------------------------------------------------
+ * Device safe area.
+ *
+ * --gitofy-safe-* are written by src/utils/safeArea.ts from the native
+ * display-cutout measurement; env() is the fallback for browsers. The 0.5 cm
+ * gap keeps every top bar comfortably BELOW the front camera, and because the
+ * value comes from the device itself it adapts to any screen automatically.
+ * ------------------------------------------------------------------ */
+:root {
+  --gitofy-top: max(var(--gitofy-safe-top, env(safe-area-inset-top)), env(safe-area-inset-top));
+  --gitofy-bottom: max(var(--gitofy-safe-bottom, env(safe-area-inset-bottom)), env(safe-area-inset-bottom));
+  --gitofy-cutout-gap: 0.5cm;
+  --gitofy-top-bar: calc(var(--gitofy-top) + var(--gitofy-cutout-gap));
+}
+
+/* Applied to every full-screen top bar (see the `gitofy-topbar` class). */
+.gitofy-topbar {
+  padding-top: max(12px, var(--gitofy-top-bar)) !important;
 }

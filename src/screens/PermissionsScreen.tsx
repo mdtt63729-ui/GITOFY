@@ -41,7 +41,7 @@ export const PermissionsScreen: React.FC<PermissionsScreenProps> = ({ onBack }) 
 
   return (
     <div className="flex-1 flex flex-col gitofy-scroll select-none">
-      <div className="sticky top-0 z-30 px-4 py-3 border-b flex items-center gap-2" style={{ backgroundColor: `${colors.surface}f0`, borderColor: colors.outlineVariant }}>
+      <div className="sticky top-0 z-30 px-4 py-3 border-b gitofy-topbar flex items-center gap-2" style={{ backgroundColor: `${colors.surface}f0`, borderColor: colors.outlineVariant }}>
         <M3IconButton aria-label="Back" onClick={onBack}>
           <svg className="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="19" y1="12" x2="5" y2="12" /><polyline points="12 19 5 12 12 5" /></svg>
         </M3IconButton>

@@ -78,10 +78,15 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
     const t = window.setTimeout(() => setBooting(false), 700);
     return () => window.clearTimeout(t);
   }, [repo.id]);
+  // The language breakdown arrives after the first paint. While it is in
+  // flight the block keeps its space (skeleton bar), so nothing below it ever
+  // shifts when the data lands.
+  const [langsLoading, setLangsLoading] = useState(true);
 
   // Load real language breakdown on mount
   useEffect(() => {
     setActiveLanguages(repo.languages || []);
+    setLangsLoading(true);
     fetchRepoLanguages(repoOwnerLogin(repo), repo.name, settings.personalAccessToken).then((langs) => {
       if (langs && langs.length > 0) {
         setActiveLanguages(
@@ -92,7 +97,7 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
           }))
         );
       }
-    });
+    }).finally(() => setLangsLoading(false));
   }, [repo]);
 
   // Per-asset download states
@@ -459,7 +464,7 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
     <div className="gitofy-screen-in flex-1 flex flex-col gitofy-scroll select-none">
       {/* Top Bar */}
       <div
-        className="sticky top-0 z-30 px-4 py-3 border-b flex items-center justify-between"
+        className="sticky top-0 z-30 px-4 py-3 border-b gitofy-topbar flex items-center justify-between"
         style={{
           backgroundColor: `${colors.surface}f0`,
           borderColor: colors.outlineVariant,
@@ -615,9 +620,20 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
                   <span className="text-[10px] font-mono opacity-60">Source language</span>
                 </div>
 
-                {/* Multi-language breakdown bar if detected */}
-                {activeLanguages.length > 0 && (
+                {/* Multi-language breakdown. Always rendered so the card never
+                    changes height: a skeleton bar holds the space while the
+                    languages are still loading, then the real bar fades in. */}
+                {langsLoading && activeLanguages.length === 0 ? (
                   <div className="flex flex-col gap-1.5 pt-1 border-t" style={{ borderColor: colors.outlineVariant }}>
+                    <div className="gitofy-skeleton w-full h-2 rounded-full" />
+                    <div className="flex items-center gap-3">
+                      <div className="gitofy-skeleton h-2.5 w-16 rounded-full" />
+                      <div className="gitofy-skeleton h-2.5 w-12 rounded-full" />
+                      <div className="gitofy-skeleton h-2.5 w-14 rounded-full" />
+                    </div>
+                  </div>
+                ) : activeLanguages.length > 0 ? (
+                  <div className="gitofy-reveal flex flex-col gap-1.5 pt-1 border-t" style={{ borderColor: colors.outlineVariant }}>
                     <div className="w-full h-2 rounded-full overflow-hidden flex">
                       {activeLanguages.map((l, i) => (
                         <div
@@ -640,7 +656,7 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
                       ))}
                     </div>
                   </div>
-                )}
+                ) : null}
               </div>
 
               {/* Files / Commits — full GitHub-style project browser */}

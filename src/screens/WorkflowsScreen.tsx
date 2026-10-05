@@ -51,17 +51,24 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
 
   const loadWorkflows = async () => {
     setIsLoadingWorkflows(true);
+    setIsLoadingRuns(true);
     try {
       const data = await fetchRepoWorkflows(owner, repo, settings.personalAccessToken);
       setWorkflows(data);
-      if (data.length > 0 && !selectedWorkflow) {
-        setSelectedWorkflow(data[0]);
-        loadRuns(data[0]);
+      // Refresh the runs of the current workflow too — previously tapping
+      // Refresh only re-read the workflow list, so nothing visibly changed.
+      const target = (selectedWorkflow && data.find((w) => w.id === selectedWorkflow.id)) || data[0];
+      if (target) {
+        setSelectedWorkflow(target);
+        const workflowKey = target.path ? target.path.split('/').pop() || target.id : target.id;
+        const freshRuns = await fetchWorkflowRuns(owner, repo, workflowKey, settings.personalAccessToken);
+        setRuns(freshRuns);
       }
     } catch (err: unknown) {
       console.warn('Failed to load workflows:', err);
     } finally {
       setIsLoadingWorkflows(false);
+      setIsLoadingRuns(false);
     }
   };
 
@@ -241,7 +248,7 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
     <div className="gitofy-screen-in flex-1 flex flex-col gitofy-scroll select-none">
       {/* Top App Bar */}
       <div
-        className="sticky top-0 z-30 px-4 py-3 border-b flex items-center justify-between"
+        className="sticky top-0 z-30 px-4 py-3 border-b gitofy-topbar flex items-center justify-between"
         style={{
           backgroundColor: `${colors.surface}f0`,
           borderColor: colors.outlineVariant,
@@ -378,7 +385,7 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
                 <span className="text-xs opacity-70">Gitofy shows only workflows that actually exist on GitHub.</span>
               </div>
             )}
-            {workflows.map((wf) => {
+            {isLoadingWorkflows ? <SkeletonRows count={3} height={64} /> : workflows.map((wf) => {
               const isSelected = selectedWorkflow?.id === wf.id;
 
               return (

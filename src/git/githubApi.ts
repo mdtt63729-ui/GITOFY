@@ -22,19 +22,53 @@ export async function runAllRepoWorkflows(
   const skipped: string[] = [];
   let dispatched = 0;
 
-  const results = await Promise.allSettled(
-    workflows.map((w) => triggerWorkflowDispatch(owner, repo, w.path || w.id, branch, token))
-  );
-
-  results.forEach((result, i) => {
-    if (result.status === 'fulfilled' && result.value.success) {
-      dispatched += 1;
-    } else {
-      skipped.push(workflows[i]?.name || 'workflow');
+  for (const w of workflows) {
+    // A workflow that already listens for `push` was started by the commit we
+    // just made. Dispatching it as well would run it twice, so leave it alone
+    // and only dispatch the ones the push cannot trigger.
+    const onPush = await workflowListensForPush(owner, repo, w.path, branch, token);
+    if (onPush) {
+      skipped.push(w.name);
+      continue;
     }
-  });
+    try {
+      const result = await triggerWorkflowDispatch(owner, repo, w.path || w.id, branch, token);
+      if (result.success) dispatched += 1;
+      else skipped.push(w.name);
+    } catch {
+      skipped.push(w.name);
+    }
+  }
 
   return { total: workflows.length, dispatched, skipped };
+}
+
+/** Does this workflow declare a `push` trigger? (then a push already ran it) */
+async function workflowListensForPush(
+  owner: string,
+  repo: string,
+  path: string,
+  ref: string,
+  token: string
+): Promise<boolean> {
+  if (!path) return false;
+  try {
+    const res = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(ref)}`,
+      { headers: githubHeaders(token) }
+    );
+    if (!res.ok) return false;
+    const data = await res.json();
+    const base64 = String(data?.content || '').replace(/\n/g, '');
+    if (!base64) return false;
+    const text = atob(base64);
+    // Only inspect the `on:` block — a `push:` key inside a step must not count.
+    const match = /(^|\n)on\s*:([\s\S]*?)(\n[A-Za-z_][\w-]*\s*:|$)/.exec(text);
+    const onBlock = match ? match[2] : text;
+    return /(^|[\s,[{-])push\s*:/.test(onBlock);
+  } catch {
+    return false;
+  }
 }
 
 export async function fetchRepoWorkflows(

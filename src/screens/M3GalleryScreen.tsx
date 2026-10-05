@@ -35,7 +35,7 @@ export const M3GalleryScreen: React.FC<M3GalleryScreenProps> = ({ onBack }) => {
     >
       {/* Top App Bar */}
       <div
-        className="sticky top-0 z-30 px-4 py-3 border-b flex items-center justify-between"
+        className="sticky top-0 z-30 px-4 py-3 border-b gitofy-topbar flex items-center justify-between"
         style={{
           backgroundColor: `${colors.surface}f0`,
           borderColor: colors.outlineVariant,

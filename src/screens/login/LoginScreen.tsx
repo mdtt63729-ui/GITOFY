@@ -47,6 +47,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoggedIn, onOpenPriv
     copyText,
     accounts,
     switchAccount,
+    session,
   } = useAuth();
 
   const [remaining, setRemaining] = useState(0);
@@ -58,6 +59,12 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoggedIn, onOpenPriv
   const [patBusy, setPatBusy] = useState(false);
   const [patError, setPatError] = useState<AuthError | null>(null);
   const [googleAccounts, setGoogleAccounts] = useState<Array<{ name: string; label: string }>>([]);
+  // Fades the success view out just before the app switches to Home, so the
+  // hand-off reads as one smooth admission instead of a hard cut.
+  const [leaving, setLeaving] = useState(false);
+  const successTimerRef = useRef<number | null>(null);
+  const authRef = useRef(false);
+  useEffect(() => { authRef.current = session.isAuthenticated; }, [session.isAuthenticated]);
   const navigatedRef = useRef(false);
 
   const reduceMotion = settings.reduceMotion;
@@ -91,12 +98,30 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoggedIn, onOpenPriv
     navigatedRef.current = true;
     triggerHaptic('success');
     const delay = reduceMotion ? 120 : 900;
-    const id = window.setTimeout(() => {
+    successTimerRef.current = window.setTimeout(() => {
+      successTimerRef.current = null;
       trackFunnel('home_shown');
-      onLoggedIn();
+      // Fade the success view out first, then switch — a smooth admission
+      // rather than an abrupt cut.
+      setLeaving(true);
+      window.setTimeout(() => {
+        if (authRef.current) {
+          onLoggedIn();
+        } else {
+          // The session did not stick, so there is nothing to open. Return to
+          // the form instead of leaving the user stranded here.
+          navigatedRef.current = false;
+          setLeaving(false);
+          resetLogin();
+        }
+      }, reduceMotion ? 0 : 220);
     }, delay);
-    return () => window.clearTimeout(id);
-  }, [authState, reduceMotion, onLoggedIn, triggerHaptic]);
+  }, [authState, reduceMotion, onLoggedIn, triggerHaptic, resetLogin]);
+
+  // Only clear the handoff timer when the screen really goes away.
+  useEffect(() => () => {
+    if (successTimerRef.current !== null) window.clearTimeout(successTimerRef.current);
+  }, []);
 
   const handleCopy = useCallback(async () => {
     if (authState.status !== 'awaiting_user' && authState.status !== 'polling') return;
@@ -176,7 +201,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoggedIn, onOpenPriv
   if (authState.status === 'success') {
     const account = authState.account;
     return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-4 p-6 animate-fade-in">
+      <div
+        className="flex-1 flex flex-col items-center justify-center gap-4 p-6 animate-fade-in"
+        style={{
+          opacity: leaving ? 0 : 1,
+          transform: leaving ? 'translateY(-6px) scale(0.99)' : 'none',
+          transition: 'opacity 220ms ease, transform 220ms cubic-bezier(0.2, 0, 0, 1)',
+        }}
+      >
         <div className="w-20 h-20 rounded-full flex items-center justify-center bg-emerald-500 text-white shadow-lg animate-success-pop">
           <svg className="w-11 h-11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
             <path className="animate-draw-tick" d="M5 12l4 4L19 6" />
@@ -230,6 +262,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoggedIn, onOpenPriv
     const err = authState.error;
     const actionKey = err.action ? `action.${err.action}` : 'action.retry';
     return (
+      <>
       <div className="flex-1 flex flex-col items-center justify-center gap-5 p-6 text-center animate-fade-in">
         <div
           className={`w-20 h-20 rounded-[28px] flex items-center justify-center ${reduceMotion ? '' : 'animate-shake'}`}
@@ -271,6 +304,36 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onLoggedIn, onOpenPriv
           </M3Button>
         </div>
       </div>
+
+      {/* The PAT sheet has to exist in THIS branch too, otherwise the
+          "Login with a Personal Access Token" link here does nothing — it only
+          appeared after Cancel returned the screen to the idle branch. */}
+        <M3BottomSheet isOpen={patOpen} onClose={() => setPatOpen(false)} title={t('pat.title')} subtitle={t('pat.hint')}>
+          <div className="flex flex-col gap-3 pt-1">
+            <M3TextField
+              label={t('pat.title')}
+              type="password"
+              value={patToken}
+              onChange={(e) => setPatToken(e.target.value)}
+              placeholder={t('pat.placeholder')}
+              validating={patBusy}
+              error={patError ? t(`error.${patError.code}`) : undefined}
+            />
+            <a
+              href="https://github.com/settings/tokens/new?scopes=repo,workflow,delete_repo,notifications&description=Gitufy"
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs font-bold py-2 px-3 rounded-xl border text-center"
+              style={{ backgroundColor: colors.surfaceContainerHighest, borderColor: colors.outline, color: colors.primary }}
+            >
+              {t('pat.generate')} ↗
+            </a>
+            <M3Button variant="filled" shape="capsule" size="large" className="w-full font-bold" loading={patBusy} disabled={!patToken.trim()} onClick={handlePatSubmit}>
+              {t('pat.verify')}
+            </M3Button>
+          </div>
+        </M3BottomSheet>
+      </>
     );
   }
 

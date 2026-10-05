@@ -90,11 +90,23 @@ jobs:
 
       - name: Compute version from tag
         id: ver
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # The version stamped into the APK (versionName) and the release tag
+          # must always be the same string, otherwise the app reports a version
+          # that does not match the release it came from.
           if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             VERSION="${GITHUB_REF_NAME#v}"
           else
-            VERSION="1.0.${GITHUB_RUN_NUMBER}"
+            # Manual run: bump the patch of the newest release tag, so versions
+            # stay monotonic and always match the published release.
+            LATEST=$(gh release list --limit 1 --json tagName --jq '.[0].tagName' 2>/dev/null || echo "")
+            if [[ "$LATEST" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+              VERSION="${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.$((BASH_REMATCH[3] + 1))"
+            else
+              VERSION="1.0.1"
+            fi
           fi
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "tag=v${VERSION}" >> "$GITHUB_OUTPUT"

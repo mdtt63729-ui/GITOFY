@@ -48,6 +48,9 @@ export interface PageTransitionProps {
   className?: string;
   viewKey?: string;
   direction?: NavDirection;
+  /** Also play the entrance when this transition first mounts (used for the
+   *  hand-off from the login screen into the app). */
+  animateOnMount?: boolean;
 }
 
 export const PageTransition: React.FC<PageTransitionProps> = ({
@@ -55,6 +58,7 @@ export const PageTransition: React.FC<PageTransitionProps> = ({
   className = '',
   viewKey,
   direction = 'forward',
+  animateOnMount = false,
 }) => {
   const { colors, settings } = useTheme();
   const reduce = settings.reduceMotion;
@@ -63,7 +67,7 @@ export const PageTransition: React.FC<PageTransitionProps> = ({
   // itself — so the very first paint of the new page is already off-screen and
   // the final position is never flashed.
   const [seenKey, setSeenKey] = useState(viewKey);
-  const [settled, setSettled] = useState(true);
+  const [settled, setSettled] = useState(!animateOnMount);
   if (seenKey !== viewKey) {
     setSeenKey(viewKey);
     setSettled(false);

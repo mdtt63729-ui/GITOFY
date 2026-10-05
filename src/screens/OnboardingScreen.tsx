@@ -149,7 +149,7 @@ export const OnboardingScreen: React.FC<OnboardingScreenProps> = ({ onComplete }
       />
 
       {/* Skip */}
-      <div className="relative flex justify-end px-5" style={{ paddingTop: 'max(14px, env(safe-area-inset-top))' }}>
+      <div className="relative flex justify-end px-5" style={{ paddingTop: 'max(14px, var(--gitofy-top-bar))' }}>
         <button
           type="button"
           onClick={finish}

@@ -525,3 +525,103 @@ window event from `MainActivity.onBackPressed`, but nothing in the web layer
 listened for it — so the Android hardware back button did nothing at all. It now
 walks the same stack (detail → repository → home) and therefore plays the
 reverse page transition.
+
+## Sign-in hand-off: "Signed in" page no longer strands the user (this revision)
+
+Two real bugs, one on top of the other:
+
+1. **The hand-off timer was cancelled and never re-armed.** `LoginScreen`'s
+   success effect cleared its `setTimeout` in the effect cleanup, and its deps
+   included `onLoggedIn` — an inline arrow in `App` whose identity changes on
+   every render. Signing in guarantees a re-render, so the cleanup cancelled the
+   timer, and the `navigatedRef` guard meant it was never scheduled again:
+   `onLoggedIn()` never fired and the app stayed on the "Signed in" screen.
+   The timer now lives in a ref and is only cleared when the screen unmounts.
+
+2. **A brand-new session could be expired a second after signing in.**
+   `validateActiveSession()` runs on foreground — exactly when the user returns
+   from the browser having just logged in. A transient failure there (or a
+   profile read racing the new token) threw `E_SESSION`, which expires the
+   session, so `App` bounced back to the login screen — which then rendered its
+   stale "Signed in" view and sat there. A token validated moments ago is now
+   trusted for a 20 s grace period.
+
+Also:
+- The success view now fades out before the switch and the app's own page
+  transition plays on its first appearance, so signing in ends with a smooth
+  admission into Home rather than a hard cut.
+- If the session genuinely did not stick, the success view now returns to the
+  form instead of leaving the user stranded.
+
+## Polling pill, language-section jump, tab-switcher bounce (this revision)
+
+1. **The "Polling" label no longer flashes on every cycle.** `loadSnapshot` was
+   setting `connection='polling'` at the start of every fetch and `'live'` when
+   it finished, so the header pill flipped labels every couple of seconds. The
+   pill now shows the real run status — "Running" — and a separate `polling`
+   flag cross-fades it to "Polling" only while a request is genuinely in flight
+   (220 ms opacity cross-fade on two overlaid spans, so nothing jumps).
+
+2. **The Languages block no longer shifts the card.** The multi-language
+   breakdown was rendered only once the data arrived, so the whole card (and
+   everything under it) jumped down when it landed. The block is now always
+   present: a skeleton bar holds exactly its space while loading, then the real
+   bar and legend fade in. `langsLoading` tracks the fetch.
+
+3. **The Overview ⇄ Releases pill stays inside its box.** The sliding indicator
+   travelled edge-to-edge and its spring overshot past the container, so the
+   coloured part appeared to leave the box. It is now inset by the 4px padding
+   on both sides (`width: calc(50% - 8px)`, `translateX(calc(100% + 8px))`),
+   the container clips, and the spring was softened — while the buttons use the
+   same spring so the whole switcher moves in sync.
+
+## Front-camera safe area, workflows refresh, run-header layout (this revision)
+
+1. **Nothing sits under the front camera on any phone.** The app runs
+   edge-to-edge, so on notched / punch-hole devices the WebView draws under the
+   camera and `env(safe-area-inset-*)` reports 0. New native bridge
+   `GitofyAndroid.getSafeAreaInsets()` measures the real display cutout + system
+   bars and returns them in CSS px; `src/utils/safeArea.ts` publishes them as
+   `--gitofy-safe-*` (re-measured on resize / rotation / foreground) and CSS
+   derives `--gitofy-top-bar = top + 0.5cm`. Every full-screen top bar now
+   carries a shared `gitofy-topbar` class, so all 12 headers sit 0.5 cm below
+   the camera automatically — no per-device values anywhere.
+
+2. **The Refresh link next to "Repository Workflows" now refreshes.** It only
+   re-read the workflow list, so nothing visible changed. It now re-reads the
+   workflows *and* the runs of the current workflow, and the workflow list shows
+   a skeleton while it loads.
+
+3. **Run-detail header.** The Success / Failure badge moved out of the top row
+   to the right end of the "Live · Elapsed · GitHub" line, as requested.
+
+## Onboarding, PAT link, device-flow resume, run-once, card animation (this revision)
+
+1. **Onboarding entrance is slow and silky now** (it was far too quick):
+   980 ms with a soft settle, dots at 320 ms, buttons at 440 ms, and a shorter
+   travel so it glides instead of snapping.
+2. **The long delay after the splash is gone.** The onboarding gate used to sit
+   *after* the `ready` (auth-session) gate, so the carousel waited for the whole
+   session read. The onboarding flag is read synchronously from localStorage, so
+   that check now runs first.
+3. **"Login with a Personal Access Token" works on the error screen.** The PAT
+   sheet was only rendered in the idle branch, so tapping the link on the
+   failed/DEVFLOW screen set state but rendered nothing — it only appeared once
+   Cancel returned the screen to idle. The sheet is now rendered there too.
+4. **Minimising no longer breaks an OTP login.** Returning from the browser
+   re-requests nothing: `resumeDeviceFlow()` continues polling the SAME device
+   code (a new code would have discarded the approval), and the foreground
+   handler calls it automatically — so an interrupted login heals itself instead
+   of parking on DEVFLOW_network_error.
+5. **Every workflow now runs exactly once.** `runAllRepoWorkflows` dispatched
+   every workflow after an upload, but a workflow that already listens for
+   `push` had been started by the commit itself — so it ran twice. It now reads
+   each workflow file and only dispatches the ones a push cannot start.
+6. **Repo cards animate.** The reveal now distinguishes the cards already on
+   screen when the list mounts (shown instantly — that was the "icons reload"
+   flicker) from the ones that scroll into view or appear from a filter change
+   (animated). The filter-chip pill is springier too (620 ms, overshoot).
+7. **App version vs release version.** A manual workflow run used to build
+   `1.0.<run number>` while a tag push built the tag, so the two could drift.
+   A manual run now bumps the patch of the newest release tag, so versionName
+   and the release tag are always the same string.

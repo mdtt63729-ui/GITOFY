@@ -25,9 +25,6 @@ export interface HomeScreenProps {
   setSelectedRepoIds: React.Dispatch<React.SetStateAction<number[]>>;
 }
 
-// Repository cards that have already animated in during this app session.
-const revealedRepoIds = new Set<number>();
-
 export const HomeScreen: React.FC<HomeScreenProps> = ({
   repos,
   isLoading,
@@ -53,6 +50,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   const [headerCompact, setHeaderCompact] = useState(false);
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const revealObserverRef = useRef<IntersectionObserver | null>(null);
+  // True once the first batch of cards has been shown, so later reveals
+  // (scrolling, or a filter change) play the entrance animation.
+  const initialRevealDoneRef = useRef(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const lastScrollTopRef = useRef(0);
@@ -93,25 +93,25 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
-          if (entry.isIntersecting) {
-            const id = Number((entry.target as HTMLElement).dataset.repoId || 0);
-            if (id) revealedRepoIds.add(id);
-            entry.target.classList.add('repo-card-revealed');
-            observer.unobserve(entry.target);
+          if (!entry.isIntersecting) return;
+          const el = entry.target as HTMLElement;
+          if (!initialRevealDoneRef.current) {
+            // Cards already on screen when the list mounted: show them straight
+            // away instead of replaying the entrance.
+            el.classList.add('repo-card-instant');
+            el.classList.add('repo-card-revealed');
+          } else {
+            // Scrolled into view, or produced by a filter change — animate.
+            el.classList.add('repo-card-revealed');
           }
+          observer.unobserve(el);
         });
+        initialRevealDoneRef.current = true;
       },
-      { root, rootMargin: '0px 0px -28px 0px', threshold: 0.05 }
+      { root, rootMargin: '0px 0px -40px 0px', threshold: 0.06 }
     );
     revealObserverRef.current = observer;
-    root.querySelectorAll('.repo-card').forEach((el) => {
-      const id = Number((el as HTMLElement).dataset.repoId || 0);
-      if (id && revealedRepoIds.has(id)) {
-        el.classList.add('repo-card-revealed');
-        return;
-      }
-      observer.observe(el);
-    });
+    root.querySelectorAll('.repo-card').forEach((el) => observer.observe(el));
     // Safety: if the observer never fires (unexpected WebView quirk) reveal every
     // card so the list can never be left blank / untappable.
     const safety = window.setTimeout(() => {
@@ -203,7 +203,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     >
       {/* Top App Bar */}
       <div
-        className={`gitofy-appbar sticky top-0 z-30 px-5 border-b ${headerCompact ? 'gitofy-appbar-compact' : ''}`}
+        className={`gitofy-appbar gitofy-topbar sticky top-0 z-30 px-5 border-b ${headerCompact ? 'gitofy-appbar-compact' : ''}`}
         style={{
           backgroundColor: `${colors.surface}f5`,
           borderColor: colors.outlineVariant,

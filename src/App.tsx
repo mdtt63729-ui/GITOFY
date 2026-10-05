@@ -558,21 +558,23 @@ function GitofyApp() {
   const activeRepoForDelete =
     repos.find((r) => selectedRepoIds[0] === r.id) || selectedRepo || repos[0] || { name: 'repository' };
 
+  // First run: show the onboarding carousel before anything else. This is
+  // decided from the local flag, so it no longer waits for the auth session to
+  // be read — that wait was the long delay after the splash.
+  if (!onboardingDone) {
+    return (
+      <AndroidFrame>
+        <OnboardingScreen onComplete={completeOnboarding} />
+      </AndroidFrame>
+    );
+  }
+
   if (!ready) {
     // Settings still loading: a blank canvas in the app background colour, not
     // a splash page.
     return (
       <AndroidFrame>
         <div style={{ height: '100dvh' }} />
-      </AndroidFrame>
-    );
-  }
-
-  // First run: show the onboarding carousel before anything else.
-  if (!onboardingDone) {
-    return (
-      <AndroidFrame>
-        <OnboardingScreen onComplete={completeOnboarding} />
       </AndroidFrame>
     );
   }
@@ -612,6 +614,8 @@ function GitofyApp() {
       <PageTransition
         viewKey={currentScreen + (currentScreen === 'home' ? currentTab : '')}
         direction={navDirection}
+        // Play the entrance when the app first appears after signing in.
+        animateOnMount
       >
         {currentScreen === 'home' && currentTab === 'home' && (
           <HomeScreen
