@@ -27,11 +27,6 @@
 
 
 /* NXT UI reference palette: soft ice/lavender canvas with violet-pink accents. */
-html[data-ui-mode='nxt'],
-html[data-ui-mode='nxt'] body {
-  background-image: var(--gitofy-nxt-background-gradient);
-  background-attachment: fixed;
-}
 
 @layer utilities {
   .scrollbar-none {
@@ -856,41 +851,18 @@ img, a { -webkit-user-drag: none; user-drag: none; }
  * the stack to carry any Bengali text.
  * ------------------------------------------------------------------ */
 :root {
-  --gitofy-font: 'Josefin Sans', 'Noto Sans Bengali', 'Trebuchet MS', system-ui, sans-serif;
+  --gitofy-font: 'Josefin Sans', 'Noto Sans Bengali', 'Trebuchet MS', system-ui, sans-serif; /* overridden at runtime by the Font setting */
 }
 html, body { font-family: var(--gitofy-font); font-weight: 500; }
 button, input, select, textarea { font-family: var(--gitofy-font); }
 *:not(svg):not(svg *) { font-family: var(--gitofy-font) !important; }
-html[data-ui-mode='nxt'] body { font-weight: 600; }
-html[data-ui-mode='nxt'] h1,
-html[data-ui-mode='nxt'] h2,
-html[data-ui-mode='nxt'] h3,
-html[data-ui-mode='nxt'] h4 { font-weight: 700; letter-spacing: -0.01em; }
 
 /* ------------------------------------------------------------------ *
  * NXT reference theme: white rounded cards, soft lavender shadows,
  * purple gradient pills and gradient icon rings.
  * ------------------------------------------------------------------ */
-html[data-ui-mode='nxt'] .repo-card {
-  border-radius: 28px !important;
-  border-color: transparent !important;
-  background-color: #FFFFFF !important;
-  box-shadow: 0 14px 34px -16px rgba(138, 75, 255, .30);
-}
 /* Primary pills become the reference's purple gradient button. */
-html[data-ui-mode='nxt'] button[data-variant='filled'] {
-  background-image: linear-gradient(135deg, #8A4BFF 0%, #A15CE1 58%, #C95B9D 100%) !important;
-  border-color: transparent !important;
-  box-shadow: 0 12px 26px -12px rgba(138, 75, 255, .70);
-}
-html[data-ui-mode='nxt'] button[data-variant='tonal'] {
-  background-image: linear-gradient(135deg, rgba(138, 75, 255, .16), rgba(201, 91, 157, .14)) !important;
-}
 /* Icon buttons get the soft gradient ring from the reference. */
-html[data-ui-mode='nxt'] button[data-m3='icon-button'] {
-  background-image: linear-gradient(135deg, rgba(138, 75, 255, .18), rgba(138, 75, 255, .02));
-  box-shadow: 0 8px 18px -10px rgba(138, 75, 255, .45);
-}
 /* Reusable gradient icon ring. */
 .nxt-ring {
   border-radius: 999px;
@@ -960,10 +932,6 @@ html[data-ui-mode='nxt'] button[data-m3='icon-button'] {
   background-image: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
   animation: gitofySkeletonSweep 1.45s cubic-bezier(0.4, 0, 0.6, 1) infinite;
   will-change: transform;
-}
-html[data-ui-mode='nxt'] .gitofy-skeleton { background-color: rgba(138, 75, 255, 0.10); }
-html[data-ui-mode='nxt'] .gitofy-skeleton::after {
-  background-image: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.85), transparent);
 }
 @keyframes gitofySkeletonSweep { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
 
@@ -1051,26 +1019,6 @@ html[data-ui-mode='nxt'] .gitofy-skeleton::after {
  * NXT: the filter chips and app-bar action buttons were washing out
  * against the lavender canvas. Force a solid, high-contrast treatment.
  * ------------------------------------------------------------------ */
-html[data-ui-mode='nxt'] button[data-m3='chip'] {
-  background-color: #FFFFFF !important;
-  border: 1px solid rgba(138, 75, 255, .22) !important;
-  color: #4A4A4A !important;
-  box-shadow: 0 6px 16px -10px rgba(138, 75, 255, .45);
-}
-html[data-ui-mode='nxt'] button[data-m3='chip'][data-selected='true'] {
-  background-color: #8A4BFF !important;
-  background-image: linear-gradient(135deg, #8A4BFF 0%, #A15CE1 58%, #C95B9D 100%) !important;
-  border-color: transparent !important;
-  color: #FFFFFF !important;
-  box-shadow: 0 10px 22px -10px rgba(138, 75, 255, .70);
-}
-html[data-ui-mode='nxt'] button[data-m3='icon-button'] {
-  background-color: #FFFFFF !important;
-  background-image: linear-gradient(135deg, rgba(138, 75, 255, .16), rgba(138, 75, 255, .02)) !important;
-  border: 1px solid rgba(138, 75, 255, .20) !important;
-  color: #8A4BFF !important;
-  box-shadow: 0 8px 18px -10px rgba(138, 75, 255, .45);
-}
 
 /* ------------------------------------------------------------------
  * iOS-style blur under every popup / sheet scrim.
@@ -1168,4 +1116,88 @@ html[data-ui-mode='nxt'] button[data-m3='icon-button'] {
 @keyframes gitofySignInSpin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) {
   .gitofy-signin-mark, .gitofy-signin-ring { animation: none !important; }
+}
+
+/* ------------------------------------------------------------------
+ * Settings that are actually applied now.
+ * ------------------------------------------------------------------ */
+
+/* Corner radius setting — drives the app's card corners. */
+.rounded-3xl { border-radius: var(--gitofy-radius, 24px) !important; }
+.rounded-2xl { border-radius: calc(var(--gitofy-radius, 16px) * 0.75) !important; }
+
+/* Density setting — compresses or relaxes the standard card padding. */
+html[data-density='compact'] .p-5 { padding: 14px !important; }
+html[data-density='compact'] .p-4 { padding: 11px !important; }
+html[data-density='relaxed'] .p-5 { padding: 26px !important; }
+html[data-density='relaxed'] .p-4 { padding: 20px !important; }
+
+/* Premium sign-in panel: a filling progress ring around the GitHub mark. */
+.gitofy-signin-wrap { position: relative; width: 132px; height: 132px; display: flex; align-items: center; justify-content: center; }
+.gitofy-signin-svg { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); }
+.gitofy-signin-progress {
+  animation: gitofySignInFill 5000ms cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+@keyframes gitofySignInFill { from { stroke-dashoffset: 263.9; } to { stroke-dashoffset: 0; } }
+.gitofy-signin-mark {
+  position: relative;
+  animation: gitofySignInPulse 1900ms ease-in-out infinite;
+}
+@keyframes gitofySignInPulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.07); opacity: 0.86; }
+}
+
+/* Smooth text swap — used wherever a value changes in place. */
+.gitofy-text-swap { animation: gitofyTextSwap 320ms cubic-bezier(0.22, 0.92, 0.28, 1) both; }
+@keyframes gitofyTextSwap { from { opacity: 0.25; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .gitofy-signin-progress, .gitofy-signin-mark, .gitofy-text-swap { animation: none !important; }
+}
+
+/* ------------------------------------------------------------------
+ * Ultra-smooth sheet / dialog entrance.
+ *
+ * The full-screen backdrop blur is NOT applied during the animation — a blur
+ * that size repainted every frame and was what made these sheets feel laggy.
+ * The motion itself is transform-only and springy.
+ * ------------------------------------------------------------------ */
+@keyframes gitofySheetIn {
+  0% { transform: translate3d(0, 100%, 0); }
+  100% { transform: translate3d(0, 0, 0); }
+}
+.gitofy-sheet-in {
+  animation: gitofySheetIn 460ms cubic-bezier(.22, 1.02, .32, 1) both;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+@keyframes gitofySheetOut {
+  0% { transform: translate3d(0, 0, 0); }
+  100% { transform: translate3d(0, 100%, 0); }
+}
+.gitofy-sheet-out {
+  animation: gitofySheetOut 240ms cubic-bezier(.4, 0, .78, .4) both;
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+/* ------------------------------------------------------------------ *
+ * App Store search: the mode button morphs between its three icons
+ * instead of swapping abruptly, and the surface slides up from the
+ * bottom edge (see SlideUpScreen — transform only, no layout work).
+ * ------------------------------------------------------------------ */
+@keyframes gitofyModeMorph {
+  0%   { transform: scale(.72) rotate(-18deg); opacity: 0; }
+  60%  { transform: scale(1.06) rotate(4deg);  opacity: 1; }
+  100% { transform: scale(1) rotate(0deg);     opacity: 1; }
+}
+.gitofy-mode-morph {
+  display: inline-flex;
+  animation: gitofyModeMorph 300ms cubic-bezier(.16,1,.3,1) both;
+}
+
+/* The sliding surface must never be re-laid-out mid-flight. */
+@media (prefers-reduced-motion: reduce) {
+  .gitofy-mode-morph { animation: none; }
 }

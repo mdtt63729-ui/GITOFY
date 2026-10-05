@@ -1229,7 +1229,7 @@ export interface RepoCommit {
   committer?: { login?: string; avatar_url?: string };
 }
 
-function githubHeaders(token: string, json = false): Record<string, string> {
+export function githubHeaders(token: string, json = false): Record<string, string> {
   const h: Record<string, string> = { Authorization: `Bearer ${token.trim()}`, Accept: 'application/vnd.github+json' };
   if (json) h['Content-Type'] = 'application/json';
   return h;
@@ -1620,5 +1620,454 @@ export async function renameRepoBranch(
   if (!res.ok) {
     const e = await res.json().catch(() => ({}));
     throw new Error(e.message || `Could not rename the branch (HTTP ${res.status}).`);
+  }
+}
+
+
+/* ------------------------------------------------------------------ *
+ * Stars (the "Star and follow" feature)
+ * ------------------------------------------------------------------ */
+
+/** `owner/name` for every repository the user has starred. */
+export async function fetchStarredRepos(token: string): Promise<Set<string>> {
+  const out = new Set<string>();
+  try {
+    const res = await fetch('https://api.github.com/user/starred?per_page=100', { headers: githubHeaders(token) });
+    if (!res.ok) return out;
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      data.forEach((r: { full_name?: string }) => { if (r.full_name) out.add(r.full_name); });
+    }
+  } catch {
+    // Signed out / offline — an empty set is fine.
+  }
+  return out;
+}
+
+/** PUT /user/starred/{owner}/{repo} — GitHub's own star endpoint. */
+export async function starRepo(owner: string, repo: string, token: string): Promise<void> {
+  const res = await fetch(`https://api.github.com/user/starred/${owner}/${repo}`, {
+    method: 'PUT',
+    headers: { ...githubHeaders(token), 'Content-Length': '0' },
+  });
+  if (!res.ok && res.status !== 204) throw new Error(`Could not star the repository (HTTP ${res.status}).`);
+}
+
+/** DELETE /user/starred/{owner}/{repo} */
+export async function unstarRepo(owner: string, repo: string, token: string): Promise<void> {
+  const res = await fetch(`https://api.github.com/user/starred/${owner}/${repo}`, {
+    method: 'DELETE',
+    headers: githubHeaders(token),
+  });
+  if (!res.ok && res.status !== 204) throw new Error(`Could not unstar the repository (HTTP ${res.status}).`);
+}
+
+/* ------------------------------------------------------------------ *
+ * Branch manager, Gists, global search and the workflow editor.
+ * ------------------------------------------------------------------ */
+
+export interface BranchInfo {
+  name: string;
+  sha: string;
+  protected: boolean;
+}
+
+export async function fetchBranches(owner: string, repo: string, token: string): Promise<BranchInfo[]> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/branches?per_page=100`, { headers: githubHeaders(token) });
+  if (!res.ok) throw new Error(`Could not load branches (HTTP ${res.status}).`);
+  const data = await res.json();
+  return Array.isArray(data)
+    ? data.map((b: { name: string; commit?: { sha?: string }; protected?: boolean }) => ({
+        name: b.name,
+        sha: b.commit?.sha ?? '',
+        protected: Boolean(b.protected),
+      }))
+    : [];
+}
+
+/** POST /repos/{o}/{r}/git/refs — create a branch from an existing commit. */
+export async function createBranch(owner: string, repo: string, name: string, fromSha: string, token: string): Promise<void> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/refs`, {
+    method: 'POST',
+    headers: githubHeaders(token, true),
+    body: JSON.stringify({ ref: `refs/heads/${name}`, sha: fromSha }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.message || `Could not create the branch (HTTP ${res.status}).`);
+  }
+}
+
+/** DELETE /repos/{o}/{r}/git/refs/heads/{name} */
+export async function deleteBranch(owner: string, repo: string, name: string, token: string): Promise<void> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/git/refs/heads/${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+    headers: githubHeaders(token),
+  });
+  if (!res.ok && res.status !== 204) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.message || `Could not delete the branch (HTTP ${res.status}).`);
+  }
+}
+
+/** The current text + blob sha of a file (used by the workflow editor). */
+export async function fetchFileForEdit(
+  owner: string,
+  repo: string,
+  path: string,
+  ref: string,
+  token: string
+): Promise<{ text: string; sha: string }> {
+  const res = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(ref)}`,
+    { headers: githubHeaders(token) }
+  );
+  if (!res.ok) throw new Error(`Could not open ${path} (HTTP ${res.status}).`);
+  const d = await res.json();
+  const base64 = String(d?.content || '').replace(/\n/g, '');
+  const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  return { text: new TextDecoder().decode(bytes), sha: String(d?.sha || '') };
+}
+
+/** PUT the file back with a commit message. */
+export async function saveFileContent(
+  owner: string,
+  repo: string,
+  path: string,
+  text: string,
+  sha: string,
+  branch: string,
+  message: string,
+  token: string
+): Promise<void> {
+  const bytes = new TextEncoder().encode(text);
+  let bin = '';
+  bytes.forEach((b) => { bin += String.fromCharCode(b); });
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/contents/${encodeURIComponent(path)}`, {
+    method: 'PUT',
+    headers: githubHeaders(token, true),
+    body: JSON.stringify({ message, content: btoa(bin), sha, branch }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.message || `Could not save ${path} (HTTP ${res.status}).`);
+  }
+}
+
+/* ----------------------------- Gists ----------------------------- */
+
+export interface GistInfo {
+  id: string;
+  description: string;
+  public: boolean;
+  files: { filename: string; language: string; size: number }[];
+  html_url: string;
+  created_at: string;
+}
+
+export async function fetchGists(token: string): Promise<GistInfo[]> {
+  const res = await fetch('https://api.github.com/gists?per_page=50', { headers: githubHeaders(token) });
+  if (!res.ok) throw new Error(`Could not load your gists (HTTP ${res.status}).`);
+  const data = await res.json();
+  return Array.isArray(data)
+    ? data.map((g: Record<string, unknown>) => ({
+        id: String(g.id),
+        description: (g.description as string) ?? '',
+        public: Boolean(g.public),
+        files: Object.values((g.files as Record<string, { filename: string; language: string; size: number }>) ?? {}).map((f) => ({
+          filename: f.filename,
+          language: f.language ?? 'Text',
+          size: f.size ?? 0,
+        })),
+        html_url: (g.html_url as string) ?? '',
+        created_at: (g.created_at as string) ?? '',
+      }))
+    : [];
+}
+
+export async function createGist(
+  token: string,
+  description: string,
+  filename: string,
+  content: string,
+  isPublic: boolean
+): Promise<void> {
+  const res = await fetch('https://api.github.com/gists', {
+    method: 'POST',
+    headers: githubHeaders(token, true),
+    body: JSON.stringify({ description, public: isPublic, files: { [filename]: { content } } }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.message || `Could not create the gist (HTTP ${res.status}).`);
+  }
+}
+
+export async function deleteGist(token: string, id: string): Promise<void> {
+  const res = await fetch(`https://api.github.com/gists/${id}`, { method: 'DELETE', headers: githubHeaders(token) });
+  if (!res.ok && res.status !== 204) throw new Error(`Could not delete the gist (HTTP ${res.status}).`);
+}
+
+/* -------------------------- Global search -------------------------- */
+
+export interface SearchRepoHit {
+  full_name: string;
+  description: string | null;
+  stargazers_count: number;
+  language: string | null;
+  private: boolean;
+  html_url: string;
+}
+
+export async function searchRepositories(query: string, token: string): Promise<SearchRepoHit[]> {
+  if (!query.trim()) return [];
+  const res = await fetch(
+    `https://api.github.com/search/repositories?q=${encodeURIComponent(query)}&per_page=20`,
+    { headers: githubHeaders(token) }
+  );
+  if (!res.ok) return [];
+  const d = await res.json();
+  return Array.isArray(d.items) ? d.items : [];
+}
+
+export interface SearchCodeHit {
+  path: string;
+  repo: string;
+  html_url: string;
+}
+
+export async function searchCode(query: string, token: string, owner?: string): Promise<SearchCodeHit[]> {
+  if (!query.trim()) return [];
+  const scope = owner ? `+user:${owner}` : '';
+  const res = await fetch(
+    `https://api.github.com/search/code?q=${encodeURIComponent(query)}${scope}&per_page=20`,
+    { headers: githubHeaders(token) }
+  );
+  if (!res.ok) return [];
+  const d = await res.json();
+  return Array.isArray(d.items)
+    ? d.items.map((i: { path: string; repository?: { full_name?: string }; html_url?: string }) => ({
+        path: i.path,
+        repo: i.repository?.full_name ?? '',
+        html_url: i.html_url ?? '',
+      }))
+    : [];
+}
+
+/* ---------------------- Releases & batch actions ---------------------- */
+
+export interface NewReleaseInput {
+  tag_name: string;
+  name: string;
+  body: string;
+  target_commitish: string;
+  draft: boolean;
+  prerelease: boolean;
+}
+
+/** POST /repos/{o}/{r}/releases */
+export async function createRelease(owner: string, repo: string, input: NewReleaseInput, token: string): Promise<{ id: number; html_url: string }> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/releases`, {
+    method: 'POST',
+    headers: githubHeaders(token, true),
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.message || `Could not create the release (HTTP ${res.status}).`);
+  }
+  const d = await res.json();
+  return { id: d.id, html_url: d.html_url };
+}
+
+/** Upload an APK (or any file) as a release asset. */
+export async function uploadReleaseAsset(
+  uploadUrl: string,
+  file: File,
+  token: string,
+  onProgress?: (sent: number, total: number) => void
+): Promise<void> {
+  const base = uploadUrl.replace('{?name,label}', '');
+  const url = `${base}?name=${encodeURIComponent(file.name)}`;
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.setRequestHeader('Content-Type', file.type || 'application/vnd.android.package-archive');
+    xhr.setRequestHeader('Accept', 'application/vnd.github+json');
+    xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress?.(e.loaded, e.total); };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) resolve();
+      else {
+        let msg = `Could not upload the file (HTTP ${xhr.status}).`;
+        try { msg = JSON.parse(xhr.responseText).message || msg; } catch { /* keep the default */ }
+        reject(new Error(msg));
+      }
+    };
+    xhr.onerror = () => reject(new Error('The upload failed — check your connection.'));
+    xhr.send(file);
+  });
+}
+
+/** PATCH /repos/{o}/{r} — flip archive state. */
+export async function setRepoArchived(owner: string, repo: string, archived: boolean, token: string): Promise<void> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+    method: 'PATCH',
+    headers: githubHeaders(token, true),
+    body: JSON.stringify({ archived }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.message || `Could not update the repository (HTTP ${res.status}).`);
+  }
+}
+
+/** PATCH /repos/{o}/{r} — flip visibility. */
+export async function setRepoVisibility(owner: string, repo: string, isPrivate: boolean, token: string): Promise<void> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
+    method: 'PATCH',
+    headers: githubHeaders(token, true),
+    body: JSON.stringify({ private: isPrivate }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.message || `Could not change the visibility (HTTP ${res.status}).`);
+  }
+}
+
+/* ---------------------- Issues & pull requests ---------------------- */
+
+export interface IssueInfo {
+  number: number;
+  title: string;
+  state: 'open' | 'closed';
+  body: string;
+  user: string;
+  userAvatar: string;
+  labels: { name: string; color: string }[];
+  comments: number;
+  createdAt: string;
+  isPull: boolean;
+  htmlUrl: string;
+  /** Pull requests only. */
+  draft?: boolean;
+  merged?: boolean;
+  head?: string;
+  base?: string;
+}
+
+function toIssueInfo(raw: Record<string, unknown>, isPull: boolean): IssueInfo {
+  const pr = (raw.pull_request ?? {}) as Record<string, unknown>;
+  return {
+    number: Number(raw.number ?? 0),
+    title: String(raw.title ?? ''),
+    state: (raw.state === 'closed' ? 'closed' : 'open'),
+    body: String(raw.body ?? ''),
+    user: String((raw.user as { login?: string } | undefined)?.login ?? 'unknown'),
+    userAvatar: String((raw.user as { avatar_url?: string } | undefined)?.avatar_url ?? ''),
+    labels: Array.isArray(raw.labels)
+      ? (raw.labels as Record<string, unknown>[]).map((l) => ({ name: String(l.name ?? ''), color: String(l.color ?? '888888') }))
+      : [],
+    comments: Number(raw.comments ?? 0),
+    createdAt: String(raw.created_at ?? ''),
+    isPull,
+    htmlUrl: String(raw.html_url ?? ''),
+    draft: Boolean(raw.draft),
+    merged: Boolean(raw.merged_at ?? pr.merged_at),
+    head: (raw.head as { ref?: string } | undefined)?.ref,
+    base: (raw.base as { ref?: string } | undefined)?.ref,
+  };
+}
+
+/** GET /repos/{o}/{r}/issues — GitHub returns pull requests in here too. */
+export async function fetchRepoIssues(owner: string, repo: string, token: string, state: 'open' | 'closed' | 'all' = 'open'): Promise<IssueInfo[]> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues?state=${state}&per_page=50&sort=updated`, { headers: githubHeaders(token) });
+  if (!res.ok) throw new Error(`Could not load issues (HTTP ${res.status}).`);
+  const data = await res.json();
+  return Array.isArray(data)
+    ? data.filter((i: Record<string, unknown>) => !i.pull_request).map((i: Record<string, unknown>) => toIssueInfo(i, false))
+    : [];
+}
+
+/** GET /repos/{o}/{r}/pulls */
+export async function fetchRepoPulls(owner: string, repo: string, token: string, state: 'open' | 'closed' | 'all' = 'open'): Promise<IssueInfo[]> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls?state=${state}&per_page=50&sort=updated`, { headers: githubHeaders(token) });
+  if (!res.ok) throw new Error(`Could not load pull requests (HTTP ${res.status}).`);
+  const data = await res.json();
+  return Array.isArray(data) ? data.map((p: Record<string, unknown>) => toIssueInfo(p, true)) : [];
+}
+
+export async function createIssue(owner: string, repo: string, title: string, body: string, token: string): Promise<IssueInfo> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues`, {
+    method: 'POST',
+    headers: githubHeaders(token, true),
+    body: JSON.stringify({ title, body }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.message || `Could not create the issue (HTTP ${res.status}).`);
+  }
+  return toIssueInfo(await res.json(), false);
+}
+
+/** PATCH state on either an issue or a pull request. */
+export async function setIssueState(owner: string, repo: string, number: number, state: 'open' | 'closed', token: string, isPull = false): Promise<void> {
+  const path = isPull ? 'pulls' : 'issues';
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/${path}/${number}`, {
+    method: 'PATCH',
+    headers: githubHeaders(token, true),
+    body: JSON.stringify({ state }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.message || `Could not update it (HTTP ${res.status}).`);
+  }
+}
+
+export interface IssueComment {
+  id: number;
+  user: string;
+  userAvatar: string;
+  body: string;
+  createdAt: string;
+}
+
+export async function fetchIssueComments(owner: string, repo: string, number: number, token: string): Promise<IssueComment[]> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues/${number}/comments?per_page=100`, { headers: githubHeaders(token) });
+  if (!res.ok) throw new Error(`Could not load the comments (HTTP ${res.status}).`);
+  const data = await res.json();
+  return Array.isArray(data)
+    ? data.map((c: Record<string, unknown>) => ({
+        id: Number(c.id ?? 0),
+        user: String((c.user as { login?: string } | undefined)?.login ?? 'unknown'),
+        userAvatar: String((c.user as { avatar_url?: string } | undefined)?.avatar_url ?? ''),
+        body: String(c.body ?? ''),
+        createdAt: String(c.created_at ?? ''),
+      }))
+    : [];
+}
+
+export async function addIssueComment(owner: string, repo: string, number: number, body: string, token: string): Promise<void> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/issues/${number}/comments`, {
+    method: 'POST',
+    headers: githubHeaders(token, true),
+    body: JSON.stringify({ body }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.message || `Could not post the comment (HTTP ${res.status}).`);
+  }
+}
+
+/** PUT /repos/{o}/{r}/pulls/{n}/merge */
+export async function mergePullRequest(owner: string, repo: string, number: number, token: string, method: 'merge' | 'squash' | 'rebase' = 'merge'): Promise<void> {
+  const res = await fetch(`https://api.github.com/repos/${owner}/${repo}/pulls/${number}/merge`, {
+    method: 'PUT',
+    headers: githubHeaders(token, true),
+    body: JSON.stringify({ merge_method: method }),
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.message || `Could not merge (HTTP ${res.status}).`);
   }
 }

@@ -23,6 +23,9 @@ export const SecurityOverlay: React.FC = () => {
       <DangerSheet
         phase={gate.phase}
         progress={gate.progress}
+        received={gate.received}
+        total={gate.total}
+        speedBps={gate.speedBps}
         error={gate.error}
         onDownload={gate.onDownload}
         onContinue={gate.onContinue}
@@ -37,6 +40,9 @@ export const SecurityOverlay: React.FC = () => {
       apkName={gate.apkName}
       phase={gate.phase}
       progress={gate.progress}
+      received={gate.received}
+      total={gate.total}
+      speedBps={gate.speedBps}
       error={gate.error}
       onDownload={gate.onDownload}
       onLater={gate.onLater}

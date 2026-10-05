@@ -12,14 +12,23 @@ export interface HomeScreenProps {
   repos: Repository[];
   isLoading: boolean;
   onRefresh: () => void;
+  /** `owner/name` of every starred repository. */
+  starred?: Set<string>;
+  onToggleStar?: (repo: Repository) => void;
   onSelectRepo: (repo: Repository) => void;
   onLongPressRepo: (repo: Repository) => void;
   onCreateRepo: () => void;
   onDeleteRepos: (repoIds: number[]) => void;
+  onBatchArchive?: (ids: number[], archived: boolean) => void;
+  onBatchVisibility?: (ids: number[], isPrivate: boolean) => void;
   onOpenSettings: () => void;
+  /** Opens the App Store search surface (slides up from the bottom). */
+  onOpenAppStore?: () => void;
   onOpenAccounts: () => void;
   onScrollDelta: (scrollTop: number, delta: number) => void;
   isDeleteMode: boolean;
+  /** Set when the list is showing saved data because GitHub could not be reached. */
+  offlineNote?: string | null;
   setIsDeleteMode: (val: boolean) => void;
   selectedRepoIds: number[];
   setSelectedRepoIds: React.Dispatch<React.SetStateAction<number[]>>;
@@ -29,14 +38,20 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
   repos,
   isLoading,
   onRefresh,
+  starred,
+  onToggleStar,
   onSelectRepo,
   onLongPressRepo,
   onCreateRepo,
   onDeleteRepos,
+  onBatchArchive,
+  onBatchVisibility,
   onOpenSettings,
+  onOpenAppStore,
   onOpenAccounts,
   onScrollDelta,
   isDeleteMode,
+  offlineNote,
   setIsDeleteMode,
   selectedRepoIds,
   setSelectedRepoIds,
@@ -61,8 +76,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     if (prevLoadingRef.current && !isLoading) justLoadedRef.current = true;
     prevLoadingRef.current = isLoading;
   }, [isLoading]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const lastScrollTopRef = useRef(0);
   const scrollFrameRef = useRef<number | null>(null);
   const pendingScrollRef = useRef<{ top: number; delta: number } | null>(null);
@@ -140,6 +153,28 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     if (el) revealObserverRef.current?.observe(el);
   }, []);
 
+  // ---- Pull to refresh -------------------------------------------------
+  const pullStartRef = useRef<number | null>(null);
+  const [pull, setPull] = useState(0);
+  const PULL_MAX = 92;
+  const PULL_TRIGGER = 58;
+
+  const onPullStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    const top = e.currentTarget.scrollTop;
+    pullStartRef.current = top <= 0 ? e.touches[0].clientY : null;
+  };
+  const onPullMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (pullStartRef.current === null) return;
+    const dy = e.touches[0].clientY - pullStartRef.current;
+    setPull(dy > 0 ? Math.min(PULL_MAX, dy * 0.5) : 0);
+  };
+  const onPullEnd = () => {
+    if (pullStartRef.current === null) return;
+    if (pull >= PULL_TRIGGER) { triggerHaptic('tick'); onRefresh(); }
+    setPull(0);
+    pullStartRef.current = null;
+  };
+
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     const currentTop = e.currentTarget.scrollTop;
     const delta = currentTop - lastScrollTopRef.current;
@@ -161,13 +196,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     if (filter === 'private' && !r.private) return false;
     if (filter === 'public' && r.private) return false;
     if (filter === 'pinned' && !r.pinned) return false;
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase();
-      return (
-        r.name.toLowerCase().includes(q) ||
-        (r.description && r.description.toLowerCase().includes(q))
-      );
-    }
     return true;
   });
 
@@ -211,6 +239,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     <div
       ref={scrollContainerRef}
       onScroll={handleScroll}
+      onTouchStart={onPullStart}
+      onTouchMove={onPullMove}
+      onTouchEnd={onPullEnd}
+      onTouchCancel={onPullEnd}
       className="relative flex-1 flex flex-col gitofy-scroll select-none"
     >
       {/* Top App Bar */}
@@ -267,9 +299,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               {/* Action Icons */}
               <div className="flex items-center gap-1">
                 <M3IconButton
-                  aria-label="Search"
-                  onClick={() => setIsSearchOpen(!isSearchOpen)}
-                  selected={isSearchOpen}
+                  aria-label="Search apps"
+                  onClick={() => onOpenAppStore?.()}
                 >
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <circle cx="11" cy="11" r="8" />
@@ -320,40 +351,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
               </div>
             </div>
 
-            {/* Expandable Search Input */}
-            {isSearchOpen && (
-              <div className="gitofy-search-in mt-2">
-                <div
-                  className="flex items-center h-10 px-3 rounded-full border"
-                  style={{
-                    backgroundColor: colors.surfaceContainerLowest,
-                    borderColor: colors.outline,
-                  }}
-                >
-                  <svg className="w-4 h-4 mr-2" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <circle cx="11" cy="11" r="8" />
-                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                  </svg>
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search repositories by name or description..."
-                    className="flex-1 bg-transparent border-none outline-none text-xs"
-                    autoFocus
-                  />
-                  {searchQuery && (
-                    <button
-                      type="button"
-                      onClick={() => setSearchQuery('')}
-                      className="cursor-pointer text-xs opacity-60 hover:opacity-100"
-                    >
-                      ✕
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -411,6 +408,18 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           </div>
         )}
 
+        {offlineNote && (
+          <div
+            className="flex items-center gap-2 px-3.5 py-2.5 rounded-2xl border text-[11px] font-semibold mt-1 animate-fade-in"
+            style={{ backgroundColor: colors.surfaceContainerHigh, borderColor: colors.outlineVariant, color: colors.onSurfaceVariant }}
+          >
+            <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M5 12.55a11 11 0 0 1 14.08 0" /><path d="M1.42 9a16 16 0 0 1 21.16 0" /><path d="M8.53 16.11a6 6 0 0 1 6.95 0" /><line x1="12" y1="20" x2="12.01" y2="20" />
+            </svg>
+            {offlineNote}
+          </div>
+        )}
+
         {/* Quick Action Capsule Row */}
         {!isDeleteMode && (
           <div className="flex items-center gap-2 pt-1 pb-1">
@@ -450,6 +459,29 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             </M3Button>
           </div>
         )}
+
+        {/* Pull-to-refresh indicator — follows the finger, transform only. */}
+        <div
+          aria-hidden="true"
+          className="flex items-center justify-center overflow-hidden"
+          style={{
+            height: pull,
+            opacity: Math.min(1, pull / PULL_TRIGGER),
+            transition: pull === 0 ? 'height 260ms cubic-bezier(0.22, 0.92, 0.28, 1), opacity 200ms ease' : 'none',
+          }}
+        >
+          <span
+            className="w-6 h-6 rounded-full border-2 border-t-transparent"
+            style={{
+              borderColor: `${colors.primary}55`,
+              borderTopColor: colors.primary,
+              transform: `rotate(${pull * 4}deg)`,
+            }}
+          />
+          <span className="ml-2 text-[10px] font-bold" style={{ color: colors.onSurfaceVariant }}>
+            {pull >= PULL_TRIGGER ? 'Release to refresh' : 'Pull to refresh'}
+          </span>
+        </div>
 
         {/* Filter Chips — with an animated sliding indicator */}
         {!isDeleteMode && (
@@ -545,6 +577,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           <div className="flex flex-col gap-2.5">
             {filteredRepos.map((repo) => {
               const isSelected = selectedRepoIds.includes(repo.id);
+              const isStarred = starred?.has(repo.full_name) ?? false;
 
               return (
                 <div
@@ -638,6 +671,19 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                           <span className="font-bold text-sm tracking-tight truncate">
                             {repo.name}
                           </span>
+                          {onToggleStar && (
+                            <button
+                              type="button"
+                              aria-label={isStarred ? 'Unstar repository' : 'Star repository'}
+                              onClick={(e) => { e.stopPropagation(); onToggleStar(repo); }}
+                              className="flex-shrink-0 p-0.5 cursor-pointer active:scale-90 transition-transform"
+                              style={{ color: isStarred ? '#F5B301' : colors.onSurfaceVariant }}
+                            >
+                              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill={isStarred ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="2">
+                                <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+                              </svg>
+                            </button>
+                          )}
                           {repo.private ? (
                             <span
                               className="px-2 py-0.5 text-[10px] rounded-full font-medium flex items-center gap-1"
@@ -790,6 +836,44 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
           >
             Delete Selected ({selectedRepoIds.length})
           </M3Button>
+        </div>
+      )}
+
+      {isDeleteMode && (onBatchArchive || onBatchVisibility) && (
+        <div className="fixed left-4 right-4 bottom-24 z-50 animate-slide-up flex justify-center gap-2">
+          {onBatchVisibility && (
+            <button
+              type="button"
+              disabled={selectedRepoIds.length === 0}
+              onClick={() => onBatchVisibility(selectedRepoIds, true)}
+              className="flex-1 max-w-[9.5rem] py-2.5 rounded-full text-xs font-bold border disabled:opacity-40 cursor-pointer active:scale-95 transition-transform"
+              style={{ backgroundColor: colors.surfaceContainerHigh, borderColor: colors.outlineVariant, color: colors.onSurface }}
+            >
+              Make private
+            </button>
+          )}
+          {onBatchVisibility && (
+            <button
+              type="button"
+              disabled={selectedRepoIds.length === 0}
+              onClick={() => onBatchVisibility(selectedRepoIds, false)}
+              className="flex-1 max-w-[9.5rem] py-2.5 rounded-full text-xs font-bold border disabled:opacity-40 cursor-pointer active:scale-95 transition-transform"
+              style={{ backgroundColor: colors.surfaceContainerHigh, borderColor: colors.outlineVariant, color: colors.onSurface }}
+            >
+              Make public
+            </button>
+          )}
+          {onBatchArchive && (
+            <button
+              type="button"
+              disabled={selectedRepoIds.length === 0}
+              onClick={() => onBatchArchive(selectedRepoIds, true)}
+              className="flex-1 max-w-[9.5rem] py-2.5 rounded-full text-xs font-bold border disabled:opacity-40 cursor-pointer active:scale-95 transition-transform"
+              style={{ backgroundColor: colors.surfaceContainerHigh, borderColor: colors.outlineVariant, color: colors.onSurface }}
+            >
+              Archive
+            </button>
+          )}
         </div>
       )}
     </div>

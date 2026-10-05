@@ -9,6 +9,17 @@ import { decryptString, encryptString } from './crypto';
 const DB = 'gitofy_secure_v1';
 const STORE = 'kv';
 
+interface NativeSecureBridge {
+  setSecure?: (key: string, value: string) => void;
+  getSecure?: (key: string) => string;
+  removeSecure?: (key: string) => void;
+}
+
+function nativeBridge(): NativeSecureBridge | undefined {
+  if (typeof window === 'undefined') return undefined;
+  return (window as unknown as { GitofyAndroid?: NativeSecureBridge }).GitofyAndroid;
+}
+
 function idbRequest<T>(req: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
     req.onsuccess = () => resolve(req.result);
@@ -59,10 +70,30 @@ async function rawKeys(): Promise<string[]> {
 
 export const SecureStore = {
   async setString(key: string, value: string): Promise<void> {
-    await rawSet(key, await encryptString(value));
+    // Durable native copy first: Android can evict the WebView's IndexedDB
+    // (and with it the decryption key), which used to sign the user out.
+    const b = nativeBridge();
+    if (b?.setSecure) {
+      try { b.setSecure(key, value); } catch { /* ignore */ }
+    }
+    try {
+      await rawSet(key, await encryptString(value));
+    } catch {
+      // IndexedDB unavailable — the native copy is still there.
+    }
   },
 
   async getString(key: string): Promise<string | null> {
+    // Prefer the durable native copy.
+    const b = nativeBridge();
+    if (b?.getSecure) {
+      try {
+        const native = b.getSecure(key);
+        if (native) return native;
+      } catch {
+        // fall through to the encrypted store
+      }
+    }
     const cipher = await rawGet(key);
     if (!cipher) return null;
     try {
@@ -88,6 +119,10 @@ export const SecureStore = {
   },
 
   async remove(key: string): Promise<void> {
+    const b = nativeBridge();
+    if (b?.removeSecure) {
+      try { b.removeSecure(key); } catch { /* ignore */ }
+    }
     await rawDel(key);
   },
 

@@ -18,6 +18,9 @@ import type { DownloadPhase } from './SecuritySheet';
 export interface DangerSheetProps {
   phase: DownloadPhase;
   progress: number;
+  received?: number;
+  total?: number;
+  speedBps?: number;
   error?: string | null;
   onDownload: () => void;
   onContinue?: () => void;
@@ -35,7 +38,7 @@ const DownloadGlyph: React.FC = () => (
   </svg>
 );
 
-export const DangerSheet: React.FC<DangerSheetProps> = ({ phase, progress, error, onDownload, onContinue }) => {
+export const DangerSheet: React.FC<DangerSheetProps> = ({ phase, progress, received, total, speedBps, error, onDownload, onContinue }) => {
   const t = useT();
 
   const busy = phase === 'downloading' || phase === 'installing';
@@ -134,7 +137,7 @@ export const DangerSheet: React.FC<DangerSheetProps> = ({ phase, progress, error
         </div>
 
         <div className="flex-shrink-0 flex flex-col gap-3 px-6 pt-2 pb-6">
-          {busy && <SheetProgress value={pct} color={M3Danger.danger} />}
+          {busy && <SheetProgress value={pct} color={M3Danger.danger} received={received} total={total} speedBps={speedBps} />}
 
           <SheetPrimaryButton loading={busy} disabled={busy || phase === 'done'} onClick={onDownload}>
             <DownloadGlyph />

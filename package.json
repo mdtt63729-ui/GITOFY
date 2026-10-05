@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "esbuild tests/auth.test.ts tests/security.test.ts --bundle --platform=node --format=esm --outdir=.test-build --log-level=warning && node --no-experimental-fetch .test-build/auth.test.js && node --no-experimental-fetch .test-build/security.test.js"
+    "test": "esbuild tests/auth.test.ts tests/security.test.ts tests/syntax.test.ts tests/deeplinks.test.ts tests/runnotifications.test.ts tests/widget.test.ts tests/appstore.test.ts --bundle --platform=node --format=esm --outdir=.test-build --log-level=warning && node --no-experimental-fetch .test-build/auth.test.js && node --no-experimental-fetch .test-build/security.test.js && node --no-experimental-fetch .test-build/syntax.test.js && node --no-experimental-fetch .test-build/deeplinks.test.js && node --no-experimental-fetch .test-build/runnotifications.test.js && node --no-experimental-fetch .test-build/widget.test.js && node --no-experimental-fetch .test-build/appstore.test.js"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

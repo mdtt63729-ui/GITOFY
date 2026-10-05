@@ -49,6 +49,12 @@ import androidx.core.content.FileProvider
 
 class MainActivity : AppCompatActivity() {
     private lateinit var webView: WebView
+
+    /**
+     * A gitofy://repo/<owner>/<name> link that arrived before the WebView was
+     * ready. The web layer pulls it once with getInitialDeepLink().
+     */
+    private var pendingDeepLink: String? = null
     private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
 
     /**
@@ -320,6 +326,35 @@ class MainActivity : AppCompatActivity() {
          * env(safe-area-inset-*) is 0 inside the WebView on notched phones —
          * this is how the web layer learns where the front camera actually is.
          */
+        /** Durable, app-private storage for the session (survives WebView eviction). */
+        @JavascriptInterface
+        fun setSecure(key: String, value: String) {
+            try {
+                getSharedPreferences(SECURE_PREFS, Context.MODE_PRIVATE)
+                    .edit().putString(key, value).apply()
+            } catch (_: Exception) {
+                // Best effort — the web layer keeps its own copy too.
+            }
+        }
+
+        @JavascriptInterface
+        fun getSecure(key: String): String {
+            return try {
+                getSharedPreferences(SECURE_PREFS, Context.MODE_PRIVATE).getString(key, "") ?: ""
+            } catch (_: Exception) {
+                ""
+            }
+        }
+
+        @JavascriptInterface
+        fun removeSecure(key: String) {
+            try {
+                getSharedPreferences(SECURE_PREFS, Context.MODE_PRIVATE).edit().remove(key).apply()
+            } catch (_: Exception) {
+                // Best effort.
+            }
+        }
+
         @JavascriptInterface
         fun getSafeAreaInsets(): String {
             return try {
@@ -374,6 +409,31 @@ class MainActivity : AppCompatActivity() {
         }
 
         @JavascriptInterface
+        /**
+         * The deep link that launched the app, consumed exactly once so a
+         * rotation or a resume does not navigate again.
+         */
+        @JavascriptInterface
+        fun getInitialDeepLink(): String {
+            val link = pendingDeepLink ?: return ""
+            pendingDeepLink = null
+            return link
+        }
+
+        /**
+         * The web layer pushes a short summary here — how many repositories the
+         * account has and the latest workflow result — and every placed
+         * home-screen widget redraws from it.
+         */
+        @JavascriptInterface
+        fun updateWidget(json: String) {
+            try {
+                GitofyWidgetProvider.saveAndRefresh(this@MainActivity, json)
+            } catch (_: Exception) {
+                // A widget that fails to redraw must never disturb the app.
+            }
+        }
+
         fun getAppVersion(): String {
             return try {
                 packageManager.getPackageInfo(packageName, 0).versionName ?: ""
@@ -462,6 +522,43 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        /**
+         * A plain notification for events the user asked to be told about —
+         * currently "a workflow run finished". Tapping it opens the app.
+         */
+        @JavascriptInterface
+        fun notify(title: String, text: String) {
+            try {
+                val mgr = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && mgr.getNotificationChannel(RUN_CHANNEL_ID) == null) {
+                    mgr.createNotificationChannel(
+                        NotificationChannel(
+                            RUN_CHANNEL_ID,
+                            "Workflow runs",
+                            NotificationManager.IMPORTANCE_DEFAULT
+                        ).apply { description = "Tells you when a workflow run finishes" }
+                    )
+                }
+                val open = packageManager.getLaunchIntentForPackage(packageName)
+                val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M)
+                    android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+                else android.app.PendingIntent.FLAG_UPDATE_CURRENT
+                val pending = open?.let { android.app.PendingIntent.getActivity(this@MainActivity, 0, it, flags) }
+                val builder = NotificationCompat.Builder(this@MainActivity, RUN_CHANNEL_ID)
+                    .setSmallIcon(android.R.drawable.stat_notify_sync)
+                    .setContentTitle(title)
+                    .setContentText(text)
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                    .setAutoCancel(true)
+                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                if (pending != null) builder.setContentIntent(pending)
+                // A stable id per event kind keeps the shade tidy instead of stacking.
+                mgr.notify(RUN_NOTIFICATION_ID, builder.build())
+            } catch (_: Exception) {
+                // A notification is a nicety; never let it break the run view.
+            }
+        }
+
         private fun emitDownload(payload: String) {
             runOnUiThread {
                 if (::webView.isInitialized) {
@@ -497,6 +594,9 @@ class MainActivity : AppCompatActivity() {
                         val safeName = fileName.replace(Regex("[^A-Za-z0-9._-]"), "_")
                         val outFile = File(dir, safeName)
                         var lastPct = -1
+                        var speedWindowStart = System.currentTimeMillis()
+                        var speedWindowBytes = 0L
+                        var speedBps = 0L
                         notifyDownload(fileName, "Starting…", 0)
                         conn.inputStream.use { input ->
                             FileOutputStream(outFile).use { output ->
@@ -507,14 +607,23 @@ class MainActivity : AppCompatActivity() {
                                     if (n < 0) break
                                     output.write(buf, 0, n)
                                     read += n
+                                    // Live speed over a short window, so it tracks
+                                    // the phone's real network throughput.
+                                    speedWindowBytes += n
+                                    val nowMs = System.currentTimeMillis()
+                                    if (nowMs - speedWindowStart >= 500) {
+                                        speedBps = speedWindowBytes * 1000L / (nowMs - speedWindowStart)
+                                        speedWindowStart = nowMs
+                                        speedWindowBytes = 0L
+                                    }
                                     if (total > 0) {
                                         val pct = ((read * 100) / total).toInt()
                                         if (pct != lastPct) {
                                             lastPct = pct
-                                            emitDownload("{\"type\":\"progress\",\"percent\":$pct}")
+                                            emitDownload("{\"type\":\"progress\",\"percent\":$pct,\"received\":$read,\"total\":$total,\"speed\":$speedBps}")
                                             notifyDownload(
                                                 fileName,
-                                                "$pct%  ·  ${read / (1024 * 1024)} MB / ${total / (1024 * 1024)} MB",
+                                                "$pct%  ·  ${read / (1024 * 1024)} MB / ${total / (1024 * 1024)} MB  ·  ${speedBps / (1024 * 1024)} MB/s",
                                                 pct
                                             )
                                         }
@@ -559,8 +668,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val SECURE_PREFS = "gitofy_secure"
+
     private val DOWNLOAD_CHANNEL_ID = "gitofy_downloads"
+    private val RUN_CHANNEL_ID = "gitofy_runs"
     private val DOWNLOAD_NOTIFICATION_ID = 4201
+    private val RUN_NOTIFICATION_ID = 7102
 
     private val filePicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         fileChooserCallback?.onReceiveValue(uri?.let { arrayOf(it) })
@@ -622,6 +735,33 @@ class MainActivity : AppCompatActivity() {
         if (hasFocus) applyImmersiveMode()
     }
 
+    /**
+     * The activity is singleTask, so a deep link that arrives while the app is
+     * already open comes through here rather than a fresh onCreate.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val uri = intent.data ?: return
+        if (uri.scheme != "gitofy" || uri.host != "repo") return
+        emitDeepLink(uri.toString())
+    }
+
+    /** Hands a deep link to the web layer as a window event. */
+    private fun emitDeepLink(url: String) {
+        if (!::webView.isInitialized) {
+            pendingDeepLink = url
+            return
+        }
+        val payload = JSONObject.quote(url)
+        webView.post {
+            webView.evaluateJavascript(
+                "window.dispatchEvent(new CustomEvent('gitofy:deeplink',{detail:$payload}));",
+                null
+            )
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         // Re-assert fullscreen when returning from the browser (after entering the
@@ -633,6 +773,15 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(com.gitofy.app.R.style.Theme_Gitofy)
         super.onCreate(savedInstanceState)
+
+        // A gitofy://repo/... link may have launched the app. The OAuth callback
+        // also uses the gitofy scheme, so only the "repo" host is treated as a
+        // deep link; everything else is left alone.
+        intent?.data?.let { uri ->
+            if (uri.scheme == "gitofy" && uri.host == "repo") {
+                pendingDeepLink = uri.toString()
+            }
+        }
 
         // Immersive edge-to-edge: the WebView occupies the entire display.
         applyImmersiveMode()

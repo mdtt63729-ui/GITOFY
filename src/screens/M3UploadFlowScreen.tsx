@@ -28,6 +28,8 @@ export interface M3UploadFlowScreenProps {
   onSuccess: (sha: string, result?: EngineResult) => void;
   onCancel: () => void;
   onRunWorkflows: () => void;
+  /** Opens the "send the same ZIP to other repositories" screen. */
+  onSendToMoreRepos?: () => void;
 }
 
 export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
@@ -36,6 +38,7 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
   onSuccess,
   onCancel,
   onRunWorkflows,
+  onSendToMoreRepos,
 }) => {
   const { colors, settings, triggerHaptic } = useTheme();
 
@@ -66,6 +69,19 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
   const [totalFiles, setTotalFiles] = useState(0);
   const [uploadedBytes, setUploadedBytes] = useState(0);
   const [totalBytes, setTotalBytes] = useState(zipFile.size);
+  // Real-speed bookkeeping (bytes sent over elapsed time).
+  const uploadStartedAtRef = useRef<number | null>(null);
+  const uploadedBytesRef = useRef(0);
+  const totalBytesRef = useRef(0);
+  useEffect(() => {
+    if (stage === 'uploading') {
+      if (uploadStartedAtRef.current === null) uploadStartedAtRef.current = Date.now();
+    } else {
+      uploadStartedAtRef.current = null;
+    }
+  }, [stage]);
+  useEffect(() => { uploadedBytesRef.current = uploadedBytes; }, [uploadedBytes]);
+  useEffect(() => { totalBytesRef.current = totalBytes; }, [totalBytes]);
   const [speedText, setSpeedText] = useState('Calculating...');
   const [etaText, setEtaText] = useState('Estimating...');
   const [engineType, setEngineType] = useState<'native_git_cli' | 'adaptive_smart_diff'>('native_git_cli');
@@ -219,8 +235,20 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
           const now = Date.now();
           if (now - lastSpeedUpdateRef.current > 250) {
             lastSpeedUpdateRef.current = now;
-            if (state.speed) setSpeedText(state.speed);
-            if (state.eta) setEtaText(state.eta);
+            // Real throughput: bytes actually sent over the elapsed time, so the
+            // readout tracks the phone's own network instead of a guess.
+            const sent = state.uploadedBytes ?? uploadedBytesRef.current;
+            const total = state.totalBytes ?? totalBytesRef.current;
+            const elapsed = (Date.now() - (uploadStartedAtRef.current ?? Date.now())) / 1000;
+            if (elapsed > 0.6 && sent > 0) {
+              const bps = sent / elapsed;
+              setSpeedText(`${(bps / (1024 * 1024)).toFixed(1)} MB/s`);
+              const remaining = Math.max(0, total - sent);
+              setEtaText(remaining > 0 ? `${Math.max(1, Math.round(remaining / bps))}s` : '');
+            } else if (state.speed) {
+              setSpeedText(state.speed);
+            }
+            if (state.eta && elapsed <= 0.6) setEtaText(state.eta);
           }
 
           if (state.phaseTimes) {
@@ -564,14 +592,16 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
               </div>
 
               <div className="upload-ref-status">
-                <div className="upload-ref-caption">{phaseLabels[uploadPhase] || 'Uploading changes…'}</div>
+                <div className="upload-ref-caption">
+                  <span key={uploadPhase} className="gitofy-text-swap inline-block">{phaseLabels[uploadPhase] || 'Uploading changes…'}</span>
+                </div>
                 <div className="upload-ref-track">
                   <div className="upload-ref-fill" style={{ width: `${Math.max(0, Math.min(100, Math.round(uploadProgress)))}%` }}>
                     <span className="upload-ref-percent">{Math.round(uploadProgress)}%</span>
                   </div>
                 </div>
 
-                <div className="upload-ref-file" key={uploadFileRevision}>
+                <div className="upload-ref-file">
                   <div className="upload-ref-file-icon">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -580,7 +610,9 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
                   </div>
                   <div className="upload-ref-file-copy">
                     <div className="upload-ref-file-label">Changing file · {engineType === 'native_git_cli' ? 'Git Smart HTTP' : 'Smart Diff'}</div>
-                    <div className="upload-ref-file-name upload-ref-file-change" title={currentFileText}>{currentFileText}</div>
+                    <div className="upload-ref-file-name upload-ref-file-change" title={currentFileText}>
+                      <span key={currentFileText} className="gitofy-text-swap inline-block">{currentFileText}</span>
+                    </div>
                     {previousUploadFile !== currentFileText && (
                       <div className="upload-ref-file-label" style={{ marginTop: 3 }}>previous: {previousUploadFile}</div>
                     )}
@@ -588,14 +620,18 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
                 </div>
 
                 <div className="upload-ref-metrics">
-                  <span>{completedFiles} / {totalFiles || extractedFiles.length || 1} files</span>
+                  <span key={`${completedFiles}-${uploadedBytes}`} className="gitofy-text-swap inline-block">
+                    {completedFiles} / {totalFiles || extractedFiles.length || 1} files
+                  </span>
                   <span>•</span>
-                  <span>{(uploadedBytes / (1024 * 1024)).toFixed(1)} / {(totalBytes / (1024 * 1024)).toFixed(1)} MB</span>
+                  <span key={Math.round(uploadedBytes / 102400)} className="gitofy-text-swap inline-block">
+                    {(uploadedBytes / (1024 * 1024)).toFixed(1)} / {(totalBytes / (1024 * 1024)).toFixed(1)} MB
+                  </span>
                 </div>
 
                 <div className="upload-ref-metrics">
-                  <span>{speedText}</span>
-                  {etaText && etaText !== '0s' && <><span>•</span><span>ETA {etaText}</span></>}
+                  <span key={speedText} className="gitofy-text-swap inline-block">{speedText}</span>
+                  {etaText && etaText !== '0s' && <><span>•</span><span key={etaText} className="gitofy-text-swap inline-block">ETA {etaText}</span></>}
                 </div>
               </div>
             </div>
@@ -753,6 +789,18 @@ export const M3UploadFlowScreen: React.FC<M3UploadFlowScreenProps> = ({
             >
               Continue
             </M3Button>
+
+            {onSendToMoreRepos && (
+              <M3Button
+                variant="tonal"
+                shape="capsule"
+                size="medium"
+                className="w-full font-bold"
+                onClick={onSendToMoreRepos}
+              >
+                Send to more repositories
+              </M3Button>
+            )}
           </div>
         </div>
       )}

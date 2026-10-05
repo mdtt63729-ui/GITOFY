@@ -45,19 +45,29 @@ export const CreateRepoSheet: React.FC<CreateRepoSheetProps> = ({
       return;
     }
 
-    setIsValidating(true);
+    // The spinner used to flip on the very first keystroke, before the debounce
+    // even fired, so every character caused a re-render of the whole sheet.
+    // It now starts only when the check actually runs, and a cancelled flag
+    // stops a stale answer from touching state.
+    let cancelled = false;
     const timer = setTimeout(async () => {
-      const res = await checkRepoAvailability(
-        name.trim(),
-        settings.githubUsername,
-        settings.personalAccessToken
-      );
-      setIsValidating(false);
-      setIsValidName(res.available);
-      setValidationMsg(res.message);
-    }, 200);
+      if (cancelled) return;
+      setIsValidating(true);
+      try {
+        const res = await checkRepoAvailability(
+          name.trim(),
+          settings.githubUsername,
+          settings.personalAccessToken
+        );
+        if (cancelled) return;
+        setIsValidName(res.available);
+        setValidationMsg(res.message);
+      } finally {
+        if (!cancelled) setIsValidating(false);
+      }
+    }, 260);
 
-    return () => clearTimeout(timer);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [name, settings.githubUsername, settings.personalAccessToken]);
 
   const handleCreate = () => {

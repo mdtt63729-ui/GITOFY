@@ -127,7 +127,7 @@ export const PageTransition: React.FC<PageTransitionProps> = ({
       style={{
         // The canvas behind every page matches the theme, so a page sliding in
         // never reveals a white or black frame.
-        backgroundColor: settings.uiMode === 'nxt' ? 'transparent' : colors.surface,
+        backgroundColor: colors.surface,
         opacity,
         transform,
         transitionProperty: 'transform, opacity',

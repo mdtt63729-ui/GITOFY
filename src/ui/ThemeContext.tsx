@@ -1,12 +1,10 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import {
-  M3ColorScheme,
+import {M3ColorScheme,
   GitofySettings,
   lightThemes,
   darkThemes,
-  nxtTheme,
   defaultSettings,
-} from '../theme/tokens';
+  FONT_STACKS } from '../theme/tokens';
 
 interface ThemeContextValue {
   settings: GitofySettings;
@@ -34,13 +32,15 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return defaultSettings;
   });
 
-  // Both available UI modes are intentionally light; NXT replaces the old theme-mode switch.
-  const isDark = false;
+  // Real dark mode. "system" follows the device.
+  const systemDark = typeof window !== 'undefined' && window.matchMedia
+    ? window.matchMedia('(prefers-color-scheme: dark)').matches
+    : false;
+  const isDark = settings.themeMode === 'dark' || (settings.themeMode === 'system' && systemDark);
 
   const activeThemeDict = isDark ? darkThemes : lightThemes;
-  const colors = settings.uiMode === 'nxt'
-    ? nxtTheme
-    : (activeThemeDict[settings.palette] || activeThemeDict.pink);
+  // NXT was removed: the M3 palette is always used now.
+  const colors = activeThemeDict[settings.palette] || activeThemeDict[isDark ? 'pink' : 'crimson'];
 
   const updateSettings = (partial: Partial<GitofySettings>) => {
     setSettings((prev) => {
@@ -113,11 +113,26 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
     document.body.style.backgroundColor = colors.background;
     document.body.style.color = colors.onBackground;
-    document.documentElement.dataset.uiMode = settings.uiMode;
-    document.body.style.backgroundImage = settings.uiMode === 'nxt'
-      ? 'var(--gitofy-nxt-background-gradient)'
-      : 'none';
-  }, [colors]);
+    document.documentElement.dataset.uiMode = 'light';
+    document.documentElement.dataset.theme = isDark ? 'dark' : 'light';
+    document.body.style.backgroundImage = 'none';
+    // Keep the status-bar colour in step with the theme.
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', colors.background);
+  }, [colors, isDark]);
+
+  // Apply the appearance settings that used to be stored but never used.
+  useEffect(() => {
+    const root = document.documentElement;
+    // Typeface — real-time, no reload.
+    root.style.setProperty('--gitofy-font', FONT_STACKS[settings.fontFamily] || FONT_STACKS.josefin);
+    // Text size: scale the root, so every rem-based size follows.
+    root.style.fontSize = `${(16 * (settings.fontScale || 1)).toFixed(2)}px`;
+    // Corner radius, exposed for the card stylesheet rule.
+    root.style.setProperty('--gitofy-radius', `${settings.cornerRadius ?? 16}px`);
+    // Density, exposed for the spacing rules.
+    root.dataset.density = settings.uiDensity || 'normal';
+  }, [settings.fontFamily, settings.fontScale, settings.cornerRadius, settings.uiDensity]);
 
   return (
     <ThemeContext.Provider

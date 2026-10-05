@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useTheme } from '../ui/ThemeContext';
 import { useT } from '../i18n/strings';
 import { M3Button } from '../ui/m3/M3Button';
@@ -9,6 +9,7 @@ import { M3IconButton } from '../ui/m3/M3IconButton';
 import { validateGitHubToken } from '../git/githubApi';
 import { openExternal } from '../utils/external';
 import { AuthConfig, isGitHubApp, isWebFlowConfigured } from '../auth/config';
+import { FONT_CHOICES, FONT_LABELS, FONT_STACKS } from '../theme/tokens';
 import { WEB_FLOW_RISK_NOTICE } from '../auth/webPkce';
 import type { GitHubAccount } from '../auth/types';
 
@@ -16,6 +17,9 @@ export interface SettingsScreenProps {
   onBack: () => void;
   onTokenUpdated?: () => void;
   onOpenGitHubSettings?: () => void;
+  onOpenGists?: () => void;
+  onOpenSearch?: () => void;
+  onOpenErrorLog?: () => void;
   onOpenPermissions?: () => void;
   onOpenDiagnostics?: () => void;
   accounts?: GitHubAccount[];
@@ -25,10 +29,27 @@ export interface SettingsScreenProps {
   onLogoutAll?: () => void | Promise<void>;
 }
 
+/** Screens that can be locked individually (ids match AppScreen). */
+export const LOCKABLE_SCREENS: { id: string; label: string }[] = [
+  { id: 'settings', label: 'Settings' },
+  { id: 'github_settings', label: 'GitHub account settings' },
+  { id: 'repo_settings', label: 'Repository settings' },
+  { id: 'branch_manager', label: 'Branches' },
+  { id: 'release_creator', label: 'New release' },
+  { id: 'gists', label: 'Gists' },
+  { id: 'workflows', label: 'Workflows' },
+  { id: 'repo_files', label: 'Repository files' },
+  { id: 'repo_commits', label: 'Repository commits' },
+  { id: 'upload_flow', label: 'Upload' },
+];
+
 export const SettingsScreen: React.FC<SettingsScreenProps> = ({
   onBack,
   onTokenUpdated,
   onOpenGitHubSettings,
+  onOpenGists,
+  onOpenSearch,
+  onOpenErrorLog,
   onOpenPermissions,
   onOpenDiagnostics,
   accounts = [],
@@ -73,6 +94,46 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
     } else {
       triggerHaptic('error');
       setStatusMessage({ text: res.error || 'Authentication failed', error: true });
+    }
+  };
+
+  // ---- Settings backup & restore ---------------------------------------
+  const settingsFileRef = useRef<HTMLInputElement | null>(null);
+  const [backupMessage, setBackupMessage] = useState<string | null>(null);
+
+  const handleExportSettings = () => {
+    try {
+      // The token is a secret and is deliberately left out.
+      const { personalAccessToken: _t, ...safe } = settings;
+      void _t;
+      const blob = new Blob([JSON.stringify(safe, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'gitofy-settings.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+      setBackupMessage('✓ Settings exported');
+      window.setTimeout(() => setBackupMessage(null), 2600);
+    } catch {
+      setBackupMessage('Could not export the settings.');
+    }
+  };
+
+  const handleImportSettings = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    try {
+      const parsed = JSON.parse(await file.text()) as Partial<typeof settings>;
+      // Never let a file overwrite the token.
+      delete (parsed as { personalAccessToken?: string }).personalAccessToken;
+      updateSettings(parsed);
+      setBackupMessage('✓ Settings imported');
+      window.setTimeout(() => setBackupMessage(null), 2600);
+    } catch {
+      setBackupMessage('That file could not be read.');
     }
   };
 
@@ -213,6 +274,33 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             </div>
           </div>
 
+          <div className="flex flex-col gap-2.5 border-t pt-3">
+            <div>
+              <p className="text-xs font-bold">Lock specific screens</p>
+              <p className="text-[10px] opacity-70 leading-relaxed">
+                Ask for your fingerprint or face again when opening these. Needs a lock mode above other than Off.
+              </p>
+            </div>
+            {LOCKABLE_SCREENS.map((sc) => {
+              const on = (settings.lockedScreens ?? []).includes(sc.id);
+              return (
+                <div key={sc.id} className="flex items-center justify-between gap-3">
+                  <span className="text-xs">{sc.label}</span>
+                  <M3Switch
+                    checked={on}
+                    onChange={(val) =>
+                      updateSettings({
+                        lockedScreens: val
+                          ? [...(settings.lockedScreens ?? []), sc.id]
+                          : (settings.lockedScreens ?? []).filter((x) => x !== sc.id),
+                      })
+                    }
+                  />
+                </div>
+              );
+            })}
+          </div>
+
           <div className="flex items-center justify-between border-t pt-3">
             <div>
               <p className="text-xs font-bold">{t('settings.flagSecure')}</p>
@@ -248,61 +336,79 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
             Appearance &amp; Tonal Palettes
           </span>
 
-          {/* UI Mode */}
+          {/* Theme: Light / Dark / System */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-semibold">UI Mode</label>
-            <div className="grid grid-cols-2 gap-2">
-              {([
-                { id: 'nxt' as const, label: 'NXT UI', description: 'Reference visual system' },
-                { id: 'light' as const, label: 'Light Mode', description: 'Material 3 palettes' },
-              ]).map((mode) => (
+            <label className="text-xs font-semibold">Theme</label>
+            <div className="grid grid-cols-3 gap-2">
+              {(['light', 'dark', 'system'] as const).map((mode) => (
                 <button
-                  key={mode.id}
+                  key={mode}
                   type="button"
-                  onClick={() => updateSettings({ uiMode: mode.id, ...(mode.id === 'light' ? { themeMode: 'light' as const } : {}) })}
-                  className={`py-3 px-3 rounded-2xl text-left border transition-all cursor-pointer ${settings.uiMode === mode.id ? 'ring-2' : ''}`}
+                  onClick={() => { triggerHaptic('tick'); updateSettings({ themeMode: mode }); }}
+                  className={`py-2 px-2.5 rounded-2xl text-xs font-bold border capitalize transition-all cursor-pointer ${settings.themeMode === mode ? 'ring-2' : ''}`}
                   style={{
-                    backgroundColor: settings.uiMode === mode.id ? colors.primary : colors.surfaceContainerLowest,
-                    color: settings.uiMode === mode.id ? colors.onPrimary : colors.onSurface,
+                    backgroundColor: settings.themeMode === mode ? colors.primary : colors.surfaceContainerLowest,
+                    color: settings.themeMode === mode ? colors.onPrimary : colors.onSurface,
                     borderColor: colors.outlineVariant,
                   }}
                 >
-                  <span className="block text-xs font-bold">{mode.label}</span>
-                  <span className="block text-[10px] mt-0.5 opacity-75">{mode.description}</span>
+                  {mode}
                 </button>
               ))}
             </div>
           </div>
 
           {/* M3 Color Palettes */}
-          <div className={`flex flex-col gap-1.5 transition-opacity ${settings.uiMode === 'nxt' ? 'opacity-45' : ''}`}>
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-semibold">M3 Accent Palette</label>
-              {settings.uiMode === 'nxt' && (
-                <span className="text-[10px] font-bold" style={{ color: colors.onSurfaceVariant }}>Disabled in NXT UI</span>
-              )}
-            </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold">M3 Accent Palette</label>
             <div className="grid grid-cols-3 gap-2">
-              {[
-                { id: 'emerald', label: 'Emerald' },
-                { id: 'indigo', label: 'Indigo' },
-                { id: 'violet', label: 'Violet' },
+              {([
                 { id: 'crimson', label: 'Crimson' },
+                { id: 'pink', label: 'Pink' },
+                { id: 'violet', label: 'Violet' },
+                { id: 'indigo', label: 'Indigo' },
+                { id: 'emerald', label: 'Emerald' },
                 { id: 'cyan', label: 'Cyan' },
-              ].map((pal) => (
+              ] as const).map((pal) => (
                 <button
                   key={pal.id}
                   type="button"
-                  disabled={settings.uiMode === 'nxt'}
-                  onClick={() => updateSettings({ palette: pal.id as any })}
-                  className={`py-2 px-2.5 rounded-2xl text-xs font-bold border transition-all cursor-pointer ${settings.palette === pal.id ? 'ring-2' : ''} ${settings.uiMode === 'nxt' ? 'cursor-not-allowed' : ''}`}
+                  onClick={() => updateSettings({ palette: pal.id })}
+                  className={`py-2 px-2.5 rounded-2xl text-xs font-bold border transition-all cursor-pointer ${settings.palette === pal.id ? 'ring-2' : ''}`}
                   style={{
-                    backgroundColor: settings.palette === pal.id && settings.uiMode !== 'nxt' ? colors.primary : colors.surfaceContainerLowest,
-                    color: settings.palette === pal.id && settings.uiMode !== 'nxt' ? colors.onPrimary : colors.onSurface,
+                    backgroundColor: settings.palette === pal.id ? colors.primary : colors.surfaceContainerLowest,
+                    color: settings.palette === pal.id ? colors.onPrimary : colors.onSurface,
                     borderColor: colors.outlineVariant,
                   }}
                 >
                   {pal.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Font — real-time, app-wide */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-semibold">Font</label>
+            <p className="text-[10px] opacity-70 leading-relaxed">
+              Changes every screen instantly. Bengali text always falls back to Noto Sans Bengali.
+            </p>
+            <div className="flex flex-wrap gap-2 pt-0.5">
+              {FONT_CHOICES.map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => { triggerHaptic('tick'); updateSettings({ fontFamily: f }); }}
+                  className={`px-3.5 py-2 rounded-full text-xs border transition-all cursor-pointer ${settings.fontFamily === f ? 'ring-2' : ''}`}
+                  style={{
+                    fontFamily: FONT_STACKS[f],
+                    fontWeight: 600,
+                    backgroundColor: settings.fontFamily === f ? colors.primary : colors.surfaceContainerLowest,
+                    color: settings.fontFamily === f ? colors.onPrimary : colors.onSurface,
+                    borderColor: colors.outlineVariant,
+                  }}
+                >
+                  {FONT_LABELS[f]}
                 </button>
               ))}
             </div>
@@ -575,8 +681,57 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
               <span>Open GitHub account settings</span>
               <span>→</span>
             </M3Button>
+            {onOpenGists && (
+              <M3Button variant="tonal" shape="rounded" size="medium" className="w-full justify-between" onClick={onOpenGists}>
+                <span>Gists</span>
+                <span>→</span>
+              </M3Button>
+            )}
+            {onOpenSearch && (
+              <M3Button variant="tonal" shape="rounded" size="medium" className="w-full justify-between" onClick={onOpenSearch}>
+                <span>Search everything</span>
+                <span>→</span>
+              </M3Button>
+            )}
+            {onOpenErrorLog && (
+              <M3Button variant="tonal" shape="rounded" size="medium" className="w-full justify-between" onClick={onOpenErrorLog}>
+                <span>Error log</span>
+                <span>→</span>
+              </M3Button>
+            )}
           </div>
         )}
+
+        {/* Backup & restore */}
+        <div
+          className="p-5 rounded-3xl border flex flex-col gap-3"
+          style={{ backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant }}
+        >
+          <span className="text-xs font-bold uppercase tracking-wider" style={{ color: colors.onSurfaceVariant }}>
+            Backup &amp; restore
+          </span>
+          <p className="text-xs leading-relaxed opacity-80" style={{ color: colors.onSurfaceVariant }}>
+            Save every setting to a file, or load one back. Your token is never included.
+          </p>
+          <div className="flex gap-2">
+            <M3Button variant="tonal" shape="capsule" size="compact" className="flex-1" onClick={handleExportSettings}>
+              Export settings
+            </M3Button>
+            <M3Button variant="tonal" shape="capsule" size="compact" className="flex-1" onClick={() => settingsFileRef.current?.click()}>
+              Import settings
+            </M3Button>
+          </div>
+          <input
+            ref={settingsFileRef}
+            type="file"
+            accept="application/json,.json"
+            className="hidden"
+            onChange={handleImportSettings}
+          />
+          {backupMessage && (
+            <p className="text-xs font-bold animate-fade-in" style={{ color: colors.diffAdded }}>{backupMessage}</p>
+          )}
+        </div>
 
         {/* Danger zone — log out of every account */}
         <div

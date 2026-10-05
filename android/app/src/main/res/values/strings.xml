@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Strings used by the home-screen widget. app_name comes from build.gradle. -->
+<resources>
+    <string name="gitofy_widget_label">Gitofy</string>
+    <string name="gitofy_widget_description">Your repositories and the latest workflow run, on your home screen.</string>
+    <string name="gitofy_widget_empty">Tap to open Gitofy</string>
+    <string name="gitofy_widget_subtitle">Tap to open</string>
+</resources>

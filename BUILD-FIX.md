@@ -802,3 +802,275 @@ The release header now shows the publish date AND time too.
 
 5. **FAB reacts to scroll immediately** — it comes back the instant the finger
    moves up, and only slides away after 24 px of deliberate downward scroll.
+
+## Light + Crimson defaults, NXT removed, settings applied, font changer (this revision)
+
+1. **Defaults are Light UI with the Crimson M3 palette.** `defaultSettings` was
+   `uiMode: 'nxt'` / `palette: 'pink'`; it is now `'light'` / `'crimson'`.
+
+2. **NXT removed.** The UI-mode switch, every `uiMode === 'nxt'` branch (frame,
+   page transition, signing-in overlay, palette gate) and all
+   `html[data-ui-mode='nxt']` CSS rules are gone. The app is always Light and the
+   M3 palette is always used.
+
+3. **Settings that were stored but never applied now work.**
+   - **Font** — a new real-time, app-wide typeface setting (see 4).
+   - **Text size** (`fontScale`) — scales the root font size, so every rem-based
+     size follows.
+   - **Corner radius** — published as `--gitofy-radius` and applied to the card
+     styles (`.rounded-3xl`, `.rounded-2xl`).
+   - **UI density** — published as `data-density` and applied to the standard
+     card paddings.
+   - **FAB position** — the FAB now actually moves to the centre when chosen.
+   - The palette list was missing Pink; all six palettes are offered now.
+
+4. **Font changer.** Six choices — Josefin Sans, Poppins, Montserrat, Orbitron,
+   Playfair Display and the device System font — shown as chip buttons rendered
+   IN their own typeface, with the same press feel as the All/Private filters.
+   Selecting one sets `--gitofy-font` immediately, so the whole app re-renders in
+   the new face with no reload and no lag. Poppins, Montserrat, Orbitron and
+   Playfair Display are now loaded from Google Fonts, and Bengali always falls
+   back to Noto Sans Bengali.
+
+## FAB opposite the nav + live M3 download progress (this revision)
+
+1. **The FAB is now exactly opposite the nav bar.** When the nav bar hides, the
+   FAB comes into its place and is visible; when the nav bar is visible, the FAB
+   hides. (It was doing the same thing as the nav before — that was my
+   misunderstanding of what you wanted.)
+
+2. **The download progress is a real M3 readout, in sync with the download.**
+   - The native downloader now reports the exact bytes written, the total size
+     and the live speed (measured over a 500 ms window, so it tracks the phone's
+     actual network throughput) with every progress event.
+   - The M3 linear progress bar in the update sheet is driven by that real
+     percentage, with the exact `12.3 MB / 45.6 MB` under it and the live
+     `2.4 MB/s` beside it.
+   - The release-asset download in a repository shows the same real speed
+     instead of a placeholder.
+
+## Durable session, premium sign-in, upload screen (this revision)
+
+1. **Signed out after a long time — real cause found.** The session (and the
+   AES key that decrypts it) lived in the WebView's **IndexedDB**, which Android
+   evicts once an app has been unused for a while; the token then became
+   undecryptable and the app treated it as "no session". The session is now also
+   written to app-private native storage (`SharedPreferences`, and the app has
+   `allowBackup="false"`), and read from there first. It survives eviction.
+   New bridge methods: `setSecure` / `getSecure` / `removeSecure`.
+
+2. **Nav bar + FAB no longer vanish on their own.** They could stay hidden
+   because the screen they were left on had tucked them away. Returning to Home
+   or the Library now always brings the nav (and therefore the FAB) back.
+
+3. **The sign-in screen is premium and runs for 5 seconds**: a progress ring
+   fills around the GitHub mark while it breathes, over a fade/scale entrance,
+   then fades smoothly into Home.
+
+4. **Uploading screen rebuilt.** Every changing value now lives inside the one
+   card and swaps with a smooth `gitofy-text-swap` (no remount — the old
+   `key={uploadFileRevision}` on the whole file block was the flicker), and the
+   speed readout is now measured for real: bytes actually sent divided by the
+   elapsed time, with the ETA derived from it.
+
+## Ultra-smooth Create-repo sheet (this revision)
+
+1. **The sheet's entrance was laggy because of the backdrop blur.** The scrim
+   applied a full-screen `backdrop-filter: blur(18px)` from the very first
+   frame, so the WebView repainted that blur on every frame of the slide. The
+   blur is now switched on only AFTER the sheet has settled (470 ms), so the
+   entrance itself is transform-only. The same fix is applied to `M3Dialog`.
+2. **New springy, transform-only sheet motion** (`gitofy-sheet-in` /
+   `gitofy-sheet-out`, 460 ms with a soft overshoot, `will-change: transform`,
+   `backface-visibility: hidden`) replacing the old linear `slideUp`.
+3. **The Create-repo form stopped re-rendering on every keystroke.** The
+   availability check flipped its spinner on the first character, before the
+   debounce fired, so typing re-rendered the whole sheet repeatedly. The spinner
+   now starts only when the check actually runs, the debounce is 260 ms, and a
+   cancelled flag prevents a stale response from touching state.
+
+## Feature batch 1 of the 20-item list (this revision)
+
+1. **Pull-to-refresh (#1).** Drag down on the home list and release — a
+   transform-only indicator follows your finger and the list reloads with the
+   existing skeleton, so it stays smooth.
+2. **Real dark mode (#16).** The dark palettes already existed but were never
+   used (`isDark` was hard-coded false). Theme is now Light / Dark / System in
+   Settings, `system` follows the device, and the status-bar colour follows the
+   theme.
+3. **Star & follow (#12).** A star button on every repository card. It flips
+   instantly (optimistic), writes to GitHub with the real
+   `PUT/DELETE /user/starred/{owner}/{repo}` endpoints, and rolls back if GitHub
+   refuses. The starred set is loaded once from `/user/starred`.
+4. **Settings backup & restore (#15).** Export every setting to a JSON file and
+   import one back. The personal access token is deliberately excluded from the
+   export and is ignored on import.
+
+Remaining from the list: offline cache, global search, run notifications,
+widget, multi-repo upload, branch manager, issues & PRs, syntax-highlighted
+editor, commit graph, gists, deep links, per-screen app lock, batch repo
+actions, release creator, workflow editor, optional crash reporting.
+
+## Feature batch 2 of the 20-item list (this revision)
+
+5. **Global search (#3).** A search screen with three tabs — My repos (instant,
+   offline, no network), All GitHub (the repositories search API) and Code (the
+   code search API, scoped to you). Reachable from Settings → Search everything.
+6. **Branch manager (#7).** List every branch, create a new one from the default
+   branch, rename a branch and delete one (with a confirmation). Reachable from a
+   repository's ⋮ menu → Branches.
+7. **Gists (#11).** List, create and delete your gists, open one on GitHub, and
+   mark a new gist public or secret. Reachable from Settings → Gists.
+8. **Workflow editor (#19).** Open any workflow's YAML from the Workflows page
+   ("Edit YAML"), read it with light YAML highlighting in Preview mode, edit it,
+   and commit it straight to the default branch with your own commit message.
+9. New API helpers: `fetchBranches`, `createBranch`, `deleteBranch`,
+   `fetchFileForEdit`, `saveFileContent`, `fetchGists`, `createGist`,
+   `deleteGist`, `searchRepositories`, `searchCode`.
+
+Still remaining: offline cache (#2), run notifications (#4), home-screen widget
+(#5), multi-repo upload (#6), issues & PRs (#8), syntax-highlighted editor for
+every file (#9), commit graph (#10), deep links (#13), per-screen app lock
+(#14), batch repo actions (#17), release creator (#18), optional crash
+reporting (#20).
+
+## Feature batch 3 (this revision)
+
+10. **Release creator (#18).** A "New release" screen in a repository's ⋮ menu:
+    tag, title, target branch, notes, draft and pre-release switches, and an
+    optional file attachment (choose an APK from the device) that uploads as a
+    release asset with a real byte-accurate progress bar. New API:
+    `createRelease`, `uploadReleaseAsset`.
+11. **Batch repository actions (#17).** The multi-select mode on the home list now
+    does more than delete: "Make private", "Make public" and "Archive" run across
+    every selected repository, then refresh the list. New API:
+    `setRepoArchived`, `setRepoVisibility`.
+12. **Commit graph (#10).** The Commits tab now draws a graph rail — a coloured
+    node per commit with a connecting line and a stable colour derived from the
+    commit SHA — instead of a plain list.
+
+## Feature batch 4 (this revision)
+
+13. **Syntax highlighting for every file (#9).** A dependency-free highlighter
+    (`src/utils/syntax.ts`) covering JavaScript/TypeScript, JSON, Python, Kotlin,
+    Java, C/C++/C#, CSS, HTML/XML, Markdown, shell, YAML, Go, Rust, SQL, Ruby and
+    PHP, chosen from the file extension. It tokenises the whole file at once, so
+    block comments and multi-line strings stay correct across lines. The file
+    viewer and the workflow editor now render through `CodeBlock`, which adds
+    line numbers and skips highlighting above 4000 lines so a big log never
+    janks. Covered by `tests/syntax.test.ts` — 40 checks, including a byte-exact
+    round-trip for every language, so highlighting can never alter the text.
+14. **Offline cache (#2).** `src/utils/offlineCache.ts` keeps the repository
+    list, each repository's file tree and its commits in localStorage with a
+    timestamp. Screens show the saved copy immediately and replace it when the
+    network answers, so the app opens to real content with no connection instead
+    of a blank screen. When GitHub cannot be reached the home list shows
+    "No connection — showing your saved list (saved 4 min ago)". The cache is
+    wiped on sign-out, and it never stores a token.
+15. **Deep links (#13).** `gitofy://repo/<owner>/<name>` (and the same
+    `https://github.com/...` shape) opens that repository in the app. New
+    `AndroidManifest.xml` intent filter for the `gitofy` scheme with host `repo`,
+    plus `onNewIntent` handling in `MainActivity` for links that arrive while the
+    app is already open; the web layer reads it once via `getInitialDeepLink()`
+    and then listens for a `gitofy:deeplink` window event. Parsing lives in
+    `src/utils/deepLinks.ts` and is covered by `tests/deeplinks.test.ts` — 10
+    checks, including that the OAuth callback and GitHub's own pages are not
+    mistaken for repositories.
+16. **Per-screen app lock (#14).** On top of the existing whole-app lock, you can
+    now choose individual screens (Settings, GitHub account settings, repository
+    settings, Branches, New release, Gists, Workflows, files, commits, Upload)
+    that ask for your fingerprint or face again on entry. Each screen asks once
+    per session, and every unlock is discarded when the whole-app lock re-engages.
+
+Still remaining: run notifications (#4), the home-screen widget (#5), multi-repo
+upload (#6), issues & pull requests (#8), optional crash reporting (#20).
+
+## Feature batch 5 (this revision)
+
+17. **Issues & pull requests (#8).** A new screen in a repository's ⋮ menu.
+    Issues and pull requests in separate tabs, with an open/closed filter; tap
+    one to read the body, labels and the whole comment thread, post a comment,
+    close or reopen it, and — for a pull request — merge it. You can also create
+    a new issue from the + button. New API: `fetchRepoIssues`, `fetchRepoPulls`,
+    `createIssue`, `setIssueState`, `fetchIssueComments`, `addIssueComment`,
+    `mergePullRequest`.
+18. **Multi-repo upload (#6).** The upload success page now offers "Send to more
+    repositories", which lets you tick any number of repositories and pushes the
+    same ZIP to each one in turn, with a per-repository result and a real
+    progress percentage. Uploads run one at a time rather than in parallel, so
+    several pushes never fight over one connection.
+19. **Optional crash reporting (#20).** `src/utils/errorLog.ts` records the last
+    50 failures — uncaught errors, rejected promises, native errors and React
+    render crashes — in a ring buffer on the device. Nothing is ever uploaded:
+    the log lives in Settings → "Error log", where you can read it, copy it or
+    clear it. A new `ErrorBoundary` also replaces a crashed screen with a
+    recovery card instead of a blank WebView. It is switched off completely by
+    the existing `diagnosticsOptIn` setting, which now also clears what was
+    stored.
+20. **Run notifications (#4).** When a workflow run you are watching reaches
+    "completed", the app posts a notification ("Workflow succeeded / failed —
+    CI · #42 — me/app") through a new native `notify` bridge and a "Workflow
+    runs" notification channel. Each run is announced at most once, so a poll
+    loop cannot spam you. Covered by `tests/runnotifications.test.ts`.
+
+Only the home-screen widget (#5) remains from the twenty. It needs a native
+Android `AppWidgetProvider`, which cannot be built or tested in this
+environment at all.
+
+## Feature batch 6 — the last one (this revision)
+
+21. **Home-screen widget (#5).** A real Android widget: `GitofyWidgetProvider`
+    plus `res/layout/gitofy_widget.xml`, `res/xml/gitofy_widget_info.xml` and a
+    rounded-card drawable, registered as a `receiver` in the manifest. It shows
+    how many repositories the signed-in account has (with the public/private
+    split) and the result of the most recent workflow run, and tapping it opens
+    the app.
+
+    It never touches the network. The web layer builds a short summary
+    (`src/utils/widget.ts`) and pushes it up through a new `updateWidget`
+    bridge; the provider stores it in SharedPreferences and redraws every placed
+    instance. `updatePeriodMillis` is deliberately 0, so the widget does not
+    wake the device on a timer of its own. Covered by `tests/widget.test.ts`.
+
+That completes all twenty items on the list. The two caveats worth repeating:
+no APK can be built or device-tested in this environment, so the widget and the
+deep-link intent filter are the two things most worth checking on a real phone.
+
+## App Store search surface (this revision)
+
+22. **The Home search button now opens an App Store search surface** that slides
+    **up from the bottom edge**, and slides back **down with the same motion**
+    when it closes. `src/ui/SlideUpScreen.tsx` owns that motion: it animates only
+    `transform` and `opacity` (so it runs on the compositor and never re-lays-out
+    the page behind it), keeps its children mounted for the whole exit — which is
+    why the close animation is actually visible — and stops accepting taps the
+    moment it starts moving. It is deliberately not routed through the app's
+    horizontal page transition; the two motions are different and mixing them
+    makes navigation feel mushy.
+
+23. **Three search sources behind one box.** The mode button cycles
+    Store → Library → My repos, morphing between its icons rather than swapping
+    abruptly. Store searches GitHub at large for repositories that publish an
+    installable APK. Library searches what you have already downloaded. **My
+    repos searches your own repositories — and tells you which of them publish
+    an installable APK** — which is what one tap from Library lands on.
+
+24. **APK discovery and install.** `src/utils/appStore.ts` finds the first
+    `.apk` asset on a repository's newest releases; results appear immediately
+    and are checked for an APK in the background, four at a time, so the list is
+    never blocked. Installing streams the file through the existing native
+    downloader (real byte counts and real speed) and then opens the Android
+    package installer — the app never installs anything silently.
+
+25. **The app icon shows a circular download indicator** (`AppIconProgress`).
+    Below 10% and above 90% it is a plain ring; in between it becomes a genuine
+    travelling wave — the ring's radius is displaced by a sine along its length
+    and the phase advances over time — with the amplitude ramping in and out so
+    the change is a morph, not a jump. The maths lives in `src/utils/wave.ts` and
+    is covered by `tests/appstore.test.ts`, including a check that the amplitude
+    never jumps between samples. The animation loop only runs while a download
+    is actually in flight.
+
+26. **Search history and the download library** persist on the device
+    (`getHistory`/`pushHistory`, `getLibrary`/`addToLibrary`). The empty search
+    state shows Recent searches and Recently downloaded, exactly as specified.

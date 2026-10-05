@@ -27,3 +27,23 @@ export function openExternal(url: string | null | undefined): void {
   }
   if (typeof window !== 'undefined') window.open(url, '_blank', 'noopener');
 }
+
+
+/**
+ * Copy text to the clipboard. Prefers the native shell (which can also mark a
+ * value as sensitive so Android does not preview it in the clipboard toast);
+ * falls back to the web clipboard in a browser preview.
+ */
+export function copyText(text: string, sensitive = false): void {
+  try {
+    const bridge = (window as unknown as { GitofyAndroid?: { copyText?: (t: string, s: boolean) => void } }).GitofyAndroid;
+    if (bridge?.copyText) { bridge.copyText(text, sensitive); return; }
+  } catch {
+    /* fall through to the web clipboard */
+  }
+  try {
+    void navigator.clipboard?.writeText(text);
+  } catch {
+    /* nothing else we can do */
+  }
+}

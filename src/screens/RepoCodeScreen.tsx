@@ -1,8 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+
+/** A stable colour per commit, so the graph rail reads as a real history. */
+const COMMIT_GRAPH_COLORS = ['#e5484d', '#f76b15', '#e2a336', '#46a758', '#12a594', '#0091ff', '#8e4ec6', '#d6409f'];
+function commitGraphColor(sha: string): string {
+  let h = 0;
+  for (let i = 0; i < sha.length; i++) h = (h * 31 + sha.charCodeAt(i)) >>> 0;
+  return COMMIT_GRAPH_COLORS[h % COMMIT_GRAPH_COLORS.length];
+}
 import { M3Button } from '../ui/m3/M3Button';
 import { M3IconButton } from '../ui/m3/M3IconButton';
 import { useTheme } from '../ui/ThemeContext';
 import { openExternal } from '../utils/external';
+import { CodeBlock } from '../ui/CodeBlock';
+import { cacheGet, cachePut, CACHE_KEYS } from '../utils/offlineCache';
 import { Repository } from '../types';
 import {
   addRepoCommitComment,
@@ -52,17 +62,33 @@ export const RepoCodeScreen: React.FC<Props> = ({ repo, token, initialTab, onBac
   const longPressedRef = useRef(false);
 
   const loadTree = useCallback(async () => {
-    setLoading(true); setError(null);
+    setError(null);
+    const key = CACHE_KEYS.tree(repoOwnerLogin(repo), repo.name, repo.default_branch);
+    const cached = cacheGet<RepoTreeEntry[]>(key);
+    if (cached) { setTree(cached.value); setLoading(false); } else { setLoading(true); }
     try {
-      setTree(await fetchRepoTree(repoOwnerLogin(repo), repo.name, repo.default_branch, token));
-    } catch (e) { setError(e instanceof Error ? e.message : 'Could not load repository files.'); }
+      const fresh = await fetchRepoTree(repoOwnerLogin(repo), repo.name, repo.default_branch, token);
+      setTree(fresh);
+      cachePut(key, fresh);
+    } catch (e) {
+      // With a cached tree on screen an offline failure is not worth an error card.
+      if (!cached) setError(e instanceof Error ? e.message : 'Could not load repository files.');
+    }
     finally { setLoading(false); }
   }, [repo, token]);
 
   const loadCommits = useCallback(async () => {
-    setLoading(true); setError(null);
-    try { setCommits(await fetchRepoCommits(repoOwnerLogin(repo), repo.name, repo.default_branch, token)); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Could not load commits.'); }
+    setError(null);
+    const key = CACHE_KEYS.commits(repoOwnerLogin(repo), repo.name, repo.default_branch);
+    const cached = cacheGet<RepoCommit[]>(key);
+    if (cached) { setCommits(cached.value); setLoading(false); } else { setLoading(true); }
+    try {
+      const fresh = await fetchRepoCommits(repoOwnerLogin(repo), repo.name, repo.default_branch, token);
+      setCommits(fresh);
+      cachePut(key, fresh);
+    } catch (e) {
+      if (!cached) setError(e instanceof Error ? e.message : 'Could not load commits.');
+    }
     finally { setLoading(false); }
   }, [repo, token]);
 
@@ -164,11 +190,11 @@ export const RepoCodeScreen: React.FC<Props> = ({ repo, token, initialTab, onBac
           <div className="flex items-center gap-2 mb-3"><button className="text-sm font-black" onClick={()=>setView({kind:'tree',path:view.path.split('/').slice(0,-1).join('/')})}>‹ Files</button><span className="opacity-35">/</span><span className="text-xs font-mono truncate">{view.path}</span></div>
           {fileLoading ? <SkeletonRows count={12} height={16} /> : <>
             <div className="flex gap-2 mb-3"><M3Button size="compact" variant="filled" onClick={()=>setEditing(v=>!v)}>{editing?'Cancel edit':'Edit'}</M3Button><M3Button size="compact" variant="tonal" onClick={()=>downloadFile(view.path,fileContent)}>Download</M3Button><M3Button size="compact" variant="tonal" onClick={()=>setCommentOpen(true)}>Comment</M3Button></div>
-            {editing ? <div className="flex flex-col gap-3"><textarea value={draft} onChange={e=>setDraft(e.target.value)} className="w-full min-h-[55vh] rounded-2xl border p-4 font-mono text-xs leading-5 outline-none resize-y" style={{backgroundColor:colors.surfaceContainerLowest,borderColor:colors.outlineVariant,color:colors.onSurface}} spellCheck={false}/><input value={commitMessage} onChange={e=>setCommitMessage(e.target.value)} className="rounded-xl border px-3 py-3 text-sm outline-none" style={{backgroundColor:colors.surfaceContainerLowest,borderColor:colors.outlineVariant,color:colors.onSurface}} placeholder="Commit message"/><M3Button variant="filled" size="large" loading={saving} onClick={saveFile}>Commit changes</M3Button></div> : <pre className="rounded-2xl border p-4 overflow-auto text-[11px] leading-5 font-mono whitespace-pre-wrap break-words" style={{backgroundColor:colors.surfaceContainerLowest,borderColor:colors.outlineVariant}}>{fileContent}</pre>}
+            {editing ? <div className="flex flex-col gap-3"><textarea value={draft} onChange={e=>setDraft(e.target.value)} className="w-full min-h-[55vh] rounded-2xl border p-4 font-mono text-xs leading-5 outline-none resize-y" style={{backgroundColor:colors.surfaceContainerLowest,borderColor:colors.outlineVariant,color:colors.onSurface}} spellCheck={false}/><input value={commitMessage} onChange={e=>setCommitMessage(e.target.value)} className="rounded-xl border px-3 py-3 text-sm outline-none" style={{backgroundColor:colors.surfaceContainerLowest,borderColor:colors.outlineVariant,color:colors.onSurface}} placeholder="Commit message"/><M3Button variant="filled" size="large" loading={saving} onClick={saveFile}>Commit changes</M3Button></div> : <CodeBlock code={fileContent} path={view.path} />}
           </>}
         </>}
 
-        {tab === 'commits' && <>{loading ? <SkeletonRows count={5} height={82} /> : commits.length === 0 ? <div className="py-16 text-center opacity-60">No commits found.</div> : <div className="gitofy-reveal-stagger flex flex-col gap-2">{commits.map(c=><button key={c.sha} type="button" className="text-left p-4 rounded-2xl border transition-transform active:scale-[0.99]" style={{backgroundColor:colors.surfaceContainerLow,borderColor:colors.outlineVariant}} onClick={()=>openExternal(c.html_url)}><div className="flex gap-3"><img src={c.author?.avatar_url} className="w-9 h-9 rounded-full" alt=""/><div className="min-w-0 flex-1"><div className="text-sm font-black truncate">{c.message}</div><div className="text-xs mt-1 opacity-65">{c.author?.login || c.committer?.login || 'GitHub user'} · {new Date(c.date).toLocaleString()}</div><div className="text-[10px] font-mono mt-2 opacity-50">{c.sha.slice(0,7)}</div></div></div></button>)}</div>}</>}
+        {tab === 'commits' && <>{loading ? <SkeletonRows count={5} height={82} /> : commits.length === 0 ? <div className="py-16 text-center opacity-60">No commits found.</div> : <div className="gitofy-reveal-stagger flex flex-col gap-2">{commits.map((c,ci)=><button key={c.sha} type="button" className="text-left px-3 py-4 rounded-2xl border transition-transform active:scale-[0.99]" style={{backgroundColor:colors.surfaceContainerLow,borderColor:colors.outlineVariant}} onClick={()=>openExternal(c.html_url)}><div className="flex gap-3"><span className="relative self-stretch flex-shrink-0" style={{width:20}}>{ci>0&&<span style={{position:'absolute',left:9,top:-18,height:'calc(50% + 18px)',width:2,backgroundColor:colors.outlineVariant}}/>}{ci<commits.length-1&&<span style={{position:'absolute',left:9,top:'50%',bottom:-18,width:2,backgroundColor:colors.outlineVariant}}/>}<span style={{position:'absolute',left:3,top:'50%',marginTop:-6,width:13,height:13,borderRadius:9999,backgroundColor:commitGraphColor(c.sha),boxShadow:`0 0 0 2.5px ${colors.surfaceContainerLow}`}}/></span><img src={c.author?.avatar_url} className="w-9 h-9 rounded-full" alt=""/><div className="min-w-0 flex-1"><div className="text-sm font-black truncate">{c.message}</div><div className="text-xs mt-1 opacity-65">{c.author?.login || c.committer?.login || 'GitHub user'} · {new Date(c.date).toLocaleString()}</div><div className="text-[10px] font-mono mt-2 opacity-50">{c.sha.slice(0,7)}</div></div></div></button>)}</div>}</>}
       </div>
 
       {commentOpen && <div className="fixed inset-0 z-[80] flex items-end sm:items-center justify-center p-4" style={{backgroundColor:'rgba(0,0,0,.45)'}}><div className="w-full max-w-md rounded-3xl p-5 border" style={{backgroundColor:colors.surfaceContainerHigh,borderColor:colors.outlineVariant}}><h3 className="text-lg font-black">Comment on {view.kind==='file'?view.path.split('/').pop():''}</h3><p className="text-xs opacity-60 mt-1">Posts a real GitHub commit comment on the selected file.</p><input value={commentLine} onChange={e=>setCommentLine(e.target.value)} type="number" min="1" className="mt-4 w-full rounded-xl border px-3 py-3 text-sm" style={{backgroundColor:colors.surfaceContainerLowest,borderColor:colors.outlineVariant}} placeholder="Line number"/><textarea value={commentText} onChange={e=>setCommentText(e.target.value)} className="mt-2 w-full min-h-28 rounded-xl border p-3 text-sm resize-none" style={{backgroundColor:colors.surfaceContainerLowest,borderColor:colors.outlineVariant}} placeholder="Write your comment…"/><div className="flex gap-2 mt-3"><M3Button className="flex-1" variant="tonal" onClick={()=>setCommentOpen(false)}>Cancel</M3Button><M3Button className="flex-1" variant="filled" loading={commenting} onClick={submitComment}>Post comment</M3Button></div></div></div>}

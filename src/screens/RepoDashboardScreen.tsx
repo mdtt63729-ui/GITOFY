@@ -16,6 +16,9 @@ export interface RepoDashboardScreenProps {
   onOpenCommits: () => void;
   onRunWorkflows: () => void;
   onOpenRepoSettings?: () => void;
+  onOpenBranches?: () => void;
+  onOpenReleaseCreator?: () => void;
+  onOpenIssues?: () => void;
   onDeleteRepo: () => void;
   onDeleteContents: () => void;
   onShareRepo: () => void;
@@ -82,6 +85,9 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
   onOpenCommits,
   onRunWorkflows,
   onOpenRepoSettings,
+  onOpenBranches,
+  onOpenReleaseCreator,
+  onOpenIssues,
   onDeleteRepo,
   onDeleteContents,
   onShareRepo,
@@ -184,18 +190,22 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
     }));
 
     const handler = (e: Event) => {
-      const d = (e as CustomEvent).detail as { type: string; percent?: number; path?: string; error?: string };
+      const d = (e as CustomEvent).detail as { type: string; percent?: number; received?: number; total?: number; speed?: number; path?: string; error?: string };
       if (!d) return;
       if (d.type === 'progress') {
         const pct = Math.max(0, Math.min(100, d.percent ?? 0));
+        const received = d.received ?? (totalBytes ? Math.round((totalBytes * pct) / 100) : 0);
+        const total = d.total ?? totalBytes;
+        const bps = d.speed ?? 0;
         setDownloads((prev) => ({
           ...prev,
           [assetId]: {
             status: 'downloading',
             progress: pct,
-            receivedBytes: totalBytes ? Math.round((totalBytes * pct) / 100) : 0,
-            totalBytes,
-            speed: 'Downloading…',
+            receivedBytes: received,
+            totalBytes: total,
+            // The real speed the native downloader is achieving right now.
+            speed: bps > 0 ? `${(bps / (1024 * 1024)).toFixed(1)} MB/s` : '…',
           },
         }));
         return;
@@ -533,6 +543,18 @@ export const RepoDashboardScreen: React.FC<RepoDashboardScreenProps> = ({
                 <button type="button" className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-left text-sm font-semibold hover:bg-white/5 active:scale-[0.98] transition-all" onClick={() => { setShowMoreMenu(false); onShareRepo(); }}>
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4"/></svg>
                   Share
+                </button>
+                <button type="button" className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-left text-sm font-semibold hover:bg-white/5 active:scale-[0.98] transition-all" onClick={() => { setShowMoreMenu(false); onOpenBranches?.(); }}>
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="6" y1="3" x2="6" y2="15"/><circle cx="18" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M18 9a9 9 0 0 1-9 9"/></svg>
+                  Branches
+                </button>
+                <button type="button" className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-left text-sm font-semibold hover:bg-white/5 active:scale-[0.98] transition-all" onClick={() => { setShowMoreMenu(false); onOpenIssues?.(); }}>
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  Issues &amp; pull requests
+                </button>
+                <button type="button" className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-left text-sm font-semibold hover:bg-white/5 active:scale-[0.98] transition-all" onClick={() => { setShowMoreMenu(false); onOpenReleaseCreator?.(); }}>
+                  <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                  New release
                 </button>
                 <button type="button" className="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-left text-sm font-semibold hover:bg-white/5 active:scale-[0.98] transition-all" onClick={() => { setShowMoreMenu(false); onOpenRepoSettings?.(); }}>
                   <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.9.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.9 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.3-1.9l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.9.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.9-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.9V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>

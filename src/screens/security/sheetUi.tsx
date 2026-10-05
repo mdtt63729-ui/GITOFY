@@ -71,15 +71,30 @@ export const SheetSecondaryButton: React.FC<{ children: React.ReactNode; onClick
 );
 
 /** Percentage on the left, M3 determinate bar on the right, kept in sync. */
-export const SheetProgress: React.FC<{ value: number; color?: string }> = ({ value, color = M3Dark.primary }) => {
+export const SheetProgress: React.FC<{
+  value: number;
+  color?: string;
+  received?: number;
+  total?: number;
+  speedBps?: number;
+}> = ({ value, color = M3Dark.primary, received, total, speedBps }) => {
   const pct = Math.max(0, Math.min(100, Math.round(value)));
+  const mb = (n: number) => `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  const hasBytes = typeof received === 'number' && typeof total === 'number' && total > 0;
+  const speed = typeof speedBps === 'number' && speedBps > 0 ? `${(speedBps / (1024 * 1024)).toFixed(1)} MB/s` : '—';
   return (
-    <div className="flex items-center gap-3">
-      <span className="text-sm font-black tabular-nums w-12 text-left" style={{ color }}>
-        {pct}%
-      </span>
-      <div className="flex-1">
-        <M3LinearProgress determinate value={pct} height={6} color={color} trackColor={M3Dark.surfaceVariant} />
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between text-[11px] font-bold tabular-nums" style={{ color: M3Dark.onSurfaceVariant }}>
+        <span>{hasBytes ? `${mb(received as number)} / ${mb(total as number)}` : 'Downloading…'}</span>
+        <span>{speed}</span>
+      </div>
+      <div className="flex items-center gap-3">
+        <span className="text-sm font-black tabular-nums w-12 text-left" style={{ color }}>
+          {pct}%
+        </span>
+        <div className="flex-1">
+          <M3LinearProgress determinate value={pct} height={6} color={color} trackColor={M3Dark.surfaceVariant} />
+        </div>
       </div>
     </div>
   );

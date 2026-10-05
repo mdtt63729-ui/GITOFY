@@ -98,10 +98,20 @@ export interface DownloadResult {
 }
 
 /** Streams the APK via the native bridge; resolves when finished or failed. */
+export interface DownloadProgress {
+  percent: number;
+  /** Bytes written so far (exact). */
+  received: number;
+  /** Total bytes, when the server reports a length. */
+  total: number;
+  /** Bytes per second, measured by the native downloader. */
+  speedBps: number;
+}
+
 export function downloadApk(
   info: ReleaseInfo,
   token: string | null,
-  onProgress: (percent: number) => void
+  onProgress: (progress: DownloadProgress) => void
 ): Promise<DownloadResult> {
   return new Promise((resolve) => {
     const b = bridge();
@@ -115,12 +125,20 @@ export function downloadApk(
       const detail = (e as CustomEvent).detail as {
         type: string;
         percent?: number;
+        received?: number;
+        total?: number;
+        speed?: number;
         path?: string;
         error?: string;
       };
       if (!detail) return;
       if (detail.type === 'progress') {
-        onProgress(Math.max(0, Math.min(100, detail.percent ?? 0)));
+        onProgress({
+          percent: Math.max(0, Math.min(100, detail.percent ?? 0)),
+          received: detail.received ?? 0,
+          total: detail.total ?? 0,
+          speedBps: detail.speed ?? 0,
+        });
         return;
       }
       window.removeEventListener('gitofy-download', handler as EventListener);

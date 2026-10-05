@@ -702,13 +702,38 @@ export const darkThemes: Record<string, M3ColorScheme> = {
   },
 };
 
+export type FontChoice = 'josefin' | 'poppins' | 'montserrat' | 'orbitron' | 'playfair' | 'system';
+
+/** The font stacks offered in Settings. Bengali always falls back to Noto Sans Bengali. */
+export const FONT_STACKS: Record<FontChoice, string> = {
+  josefin: "'Josefin Sans', 'Noto Sans Bengali', sans-serif",
+  poppins: "'Poppins', 'Noto Sans Bengali', sans-serif",
+  montserrat: "'Montserrat', 'Noto Sans Bengali', sans-serif",
+  orbitron: "'Orbitron', 'Noto Sans Bengali', sans-serif",
+  playfair: "'Playfair Display', 'Noto Sans Bengali', Georgia, serif",
+  system: "system-ui, -apple-system, 'Roboto', 'Noto Sans Bengali', sans-serif",
+};
+
+export const FONT_LABELS: Record<FontChoice, string> = {
+  josefin: 'Josefin Sans',
+  poppins: 'Poppins',
+  montserrat: 'Montserrat',
+  orbitron: 'Orbitron',
+  playfair: 'Playfair Display',
+  system: 'System',
+};
+
+export const FONT_CHOICES: FontChoice[] = ['josefin', 'poppins', 'montserrat', 'orbitron', 'playfair', 'system'];
+
 export interface GitofySettings {
   // Theme & Appearance
-  /** NXT is the new default visual system; Light exposes the M3 palette controls. */
+  /** Kept for saved-settings compatibility; the app is always Light now. */
   uiMode: 'nxt' | 'light';
   themeMode: 'light' | 'dark' | 'system';
   palette: 'pink' | 'emerald' | 'indigo' | 'violet' | 'crimson' | 'cyan';
   fontScale: number;
+  /** App-wide typeface (see FONT_STACKS). */
+  fontFamily: FontChoice;
   cornerRadius: number;
   uiDensity: 'compact' | 'normal' | 'relaxed';
   
@@ -753,16 +778,23 @@ export interface GitofySettings {
 
   // Auth & security (PRD v2.0 §7.6, §12)
   appLockMode: 'off' | 'always' | '1m' | '5m';
+  /**
+   * Screens that ask for the device lock again before they open, on top of the
+   * whole-app lock above. Stored as screen ids so it survives a rename.
+   */
+  lockedScreens: string[];
   flagSecure: boolean;
   enableWebFlow: boolean;
   diagnosticsOptIn: boolean;
 }
 
 export const defaultSettings: GitofySettings = {
-  uiMode: 'nxt',
+  // Light UI with the Crimson M3 palette, as requested.
+  uiMode: 'light',
   themeMode: 'light',
-  palette: 'pink',
+  palette: 'crimson',
   fontScale: 1.0,
+  fontFamily: 'josefin',
   cornerRadius: 16,
   uiDensity: 'normal',
 
@@ -800,6 +832,7 @@ export const defaultSettings: GitofySettings = {
   isDemoMode: false,
 
   appLockMode: 'off',
+  lockedScreens: [],
   flagSecure: false,
   enableWebFlow: false,
   diagnosticsOptIn: true,

@@ -10,7 +10,7 @@ import {
   DiffSummary,
   AppScreen,
   InboxItem,
-} from './types';
+  WorkflowItem } from './types';
 import {
   fetchUserRepos,
   clearGitHubCache,
@@ -20,6 +20,11 @@ import {
   fetchRemoteTreeMap,
   performRealGitPush,
   fetchUserActivityInbox,
+  fetchStarredRepos,
+  starRepo,
+  unstarRepo,
+  setRepoArchived,
+  setRepoVisibility,
 } from './git/githubApi';
 import { processZipFile, computeSmartDiff, ExtractedFile } from './git/diffEngine';
 import { EngineResult } from './git/gitUploadEngine';
@@ -40,6 +45,22 @@ import { M3UploadFlowScreen } from './screens/M3UploadFlowScreen';
 import { RepoActionResultScreen, RepoActionKind } from './screens/RepoActionResultScreen';
 import { OnboardingScreen } from './screens/OnboardingScreen';
 import { GitHubSettingsScreen } from './screens/GitHubSettingsScreen';
+import { BranchManagerScreen } from './screens/BranchManagerScreen';
+import { openExternal } from './utils/external';
+import { cacheGet, cachePut, cacheClear, cacheAge, CACHE_KEYS } from './utils/offlineCache';
+import { parseDeepLink, deepLinkKey } from './utils/deepLinks';
+import { GistsScreen } from './screens/GistsScreen';
+import { GlobalSearchScreen } from './screens/GlobalSearchScreen';
+import { WorkflowEditorScreen } from './screens/WorkflowEditorScreen';
+import { ReleaseCreatorScreen } from './screens/ReleaseCreatorScreen';
+import { IssuesScreen } from './screens/IssuesScreen';
+import { MultiRepoUploadScreen } from './screens/MultiRepoUploadScreen';
+import { ErrorLogScreen } from './screens/ErrorLogScreen';
+import { AppStoreScreen } from './screens/AppStoreScreen';
+import { SlideUpScreen } from './ui/SlideUpScreen';
+import { setErrorLogEnabled } from './utils/errorLog';
+import { ensureNotificationPermission } from './utils/runNotifications';
+import { pushRepoSummary, pushRunSummary } from './utils/widget';
 import { RepoSettingsScreen } from './screens/RepoSettingsScreen';
 import { PageTransition, type NavDirection } from './ui/transitions/PageTransition';
 import { AuthProvider, useAuth } from './auth/AuthContext';
@@ -69,6 +90,14 @@ const SCREEN_DEPTH: Record<string, number> = {
   settings: 2,
   github_settings: 3,
   repo_settings: 3,
+  branch_manager: 3,
+  workflow_editor: 3,
+  release_creator: 3,
+  issues: 3,
+  multi_upload: 4,
+  error_log: 2,
+  gists: 2,
+  global_search: 2,
   repo_dashboard: 2,
   zip_analysis: 3,
   upload: 3,
@@ -150,7 +179,9 @@ function GitofyApp() {
     };
     document.addEventListener('visibilitychange', onVisibility);
     return () => document.removeEventListener('visibilitychange', onVisibility);
-  }, [settings.appLockMode]);
+    // A fresh whole-app lock means every per-screen unlock is stale too.
+    if (appLocked) setUnlockedScreens(new Set());
+  }, [settings.appLockMode, appLocked]);
 
   // Repositories & Data State
   const [repos, setRepos] = useState<Repository[]>([]);
@@ -160,6 +191,22 @@ function GitofyApp() {
   const backResetTimerRef = useRef<number | null>(null);
   const [selectedRepo, setSelectedRepo] = useState<Repository | null>(null);
   const [isLoadingRepos, setIsLoadingRepos] = useState(false);
+  // `owner/name` of every starred repository, for the star buttons on the cards.
+  const [starred, setStarred] = useState<Set<string>>(new Set());
+  // Set when the home list is showing cached data because GitHub was unreachable.
+  const [reposSavedAt, setReposSavedAt] = useState<number | null>(null);
+  // Screens the user has already unlocked during this session, so the
+  // per-screen lock asks once and not on every visit.
+  const [unlockedScreens, setUnlockedScreens] = useState<Set<string>>(new Set());
+  // The App Store search surface: it slides up from the bottom edge rather than
+  // using the horizontal page transition, so it gets its own flag.
+  const [appStoreOpen, setAppStoreOpen] = useState(false);
+  // Deep links are resolved against the repository list, so keep a live ref of
+  // it and hold a link that arrives before the list is ready.
+  const reposRef = useRef<Repository[]>(repos);
+  const pendingDeepLinkRef = useRef<string | null>(null);
+  // The workflow currently open in the YAML editor.
+  const [editingWorkflow, setEditingWorkflow] = useState<WorkflowItem | null>(null);
 
   // Scroll-Reactive UI Engine State (§৭)
   const [isNavVisible, setIsNavVisible] = useState(true);
@@ -180,6 +227,13 @@ function GitofyApp() {
     prevScreenRef.current = currentScreen;
   }, [currentScreen]);
 
+  // Coming back to Home always brings the navigation bar (and therefore the
+  // FAB) back — they could previously stay hidden if the screen had been left
+  // with them tucked away, which made them look like they vanished on their own.
+  useEffect(() => {
+    if (currentScreen === 'home' || currentScreen === 'inbox') setIsNavVisible(true);
+  }, [currentScreen, currentTab]);
+
   // A short, smooth "signing you in" panel the moment GitHub authorises the
   // device flow — so the return from the browser resolves into a deliberate
   // moment instead of a 2-3 s wait on a stalled screen.
@@ -190,7 +244,8 @@ function GitofyApp() {
     wasAuthenticatedRef.current = session.isAuthenticated;
     if (was || !session.isAuthenticated) return;
     setSigningIn(true);
-    const t = window.setTimeout(() => setSigningIn(false), 900);
+    // A deliberate, premium hand-off that runs for five seconds.
+    const t = window.setTimeout(() => setSigningIn(false), 5000);
     return () => window.clearTimeout(t);
   }, [session.isAuthenticated]);
   // The FAB's own visibility, driven ONLY by scroll direction — it is no
@@ -232,14 +287,27 @@ function GitofyApp() {
       return;
     }
 
+    // Show whatever we saved last time straight away, so the list is never blank.
+    const cacheKey = CACHE_KEYS.repos(settings.githubUsername);
+    const cached = cacheGet<Repository[]>(cacheKey);
+    if (cached) {
+      setRepos((prev) => (prev.length ? prev : cached.value));
+      setReposSavedAt(cached.savedAt);
+    }
+
     setIsLoadingRepos(true);
     const startedAt = Date.now();
     try {
       const realRepos = await fetchUserRepos(settings.personalAccessToken);
       setRepos(realRepos);
+      cachePut(cacheKey, realRepos);
+      setReposSavedAt(null);
+      void fetchStarredRepos(settings.personalAccessToken).then(setStarred);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to load';
       console.warn('Could not load repos from GitHub:', msg);
+      // Keep the cached list visible and tell the user it is saved data.
+      if (cached) setReposSavedAt(cached.savedAt);
     } finally {
       // A manual refresh holds the skeleton briefly so it never flashes; an
       // automatic load returns as soon as the data is there (the old blanket
@@ -249,13 +317,57 @@ function GitofyApp() {
       if (minMs > 0 && elapsed < minMs) await new Promise((r) => window.setTimeout(r, minMs - elapsed));
       setIsLoadingRepos(false);
     }
-  }, [settings.personalAccessToken]);
+  }, [settings.personalAccessToken, settings.githubUsername]);
 
   useEffect(() => {
     if (settings.personalAccessToken) {
       loadRepositories();
     }
   }, [loadRepositories, settings.personalAccessToken]);
+
+  // Deep links. gitofy://repo/<owner>/<name> — from a browser, a share sheet or
+  // a QR code — opens that repository straight away. The native shell delivers
+  // it once on launch (getInitialDeepLink) and as a window event afterwards.
+  useEffect(() => { reposRef.current = repos; }, [repos]);
+
+  // Keep the home-screen widget's repository counts current.
+  useEffect(() => { if (repos.length) pushRepoSummary(repos); }, [repos]);
+
+  // Crash reporting is opt-in: turning it off stops recording and clears
+  // whatever was already saved.
+  useEffect(() => { setErrorLogEnabled(settings.diagnosticsOptIn); }, [settings.diagnosticsOptIn]);
+
+  // Ask for notification permission once so a finished workflow run can tell you.
+  useEffect(() => { ensureNotificationPermission(); }, []);
+
+  useEffect(() => {
+    const bridge = (window as unknown as { GitofyAndroid?: { getInitialDeepLink?: () => string } }).GitofyAndroid;
+    const initial = bridge?.getInitialDeepLink?.();
+    if (initial) window.setTimeout(() => { pendingDeepLinkRef.current = initial; }, 400);
+    const onEvent = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (typeof detail === 'string' && detail) pendingDeepLinkRef.current = detail;
+    };
+    window.addEventListener('gitofy:deeplink', onEvent);
+    return () => window.removeEventListener('gitofy:deeplink', onEvent);
+  }, []);
+
+  // Resolve a held link as soon as the repository list is available.
+  useEffect(() => {
+    const raw = pendingDeepLinkRef.current;
+    if (!raw || repos.length === 0) return;
+    pendingDeepLinkRef.current = null;
+    const target = parseDeepLink(raw);
+    const found = target ? repos.find((r) => r.full_name.toLowerCase() === deepLinkKey(target)) : undefined;
+    if (found) {
+      setSelectedRepo(found);
+      setIsNavVisible(false);
+      setCurrentScreen('repo_dashboard');
+    } else {
+      // Not one of this account's repositories — let the browser have it.
+      openExternal(raw);
+    }
+  }, [repos]);
 
   // Android hardware back. The native shell dispatches an `androidback` window
   // event (MainActivity.onBackPressed) but nothing listened for it, so the
@@ -663,6 +775,29 @@ function GitofyApp() {
             repos={repos}
             isLoading={isLoadingRepos}
             onRefresh={() => { void loadRepositories({ minSkeletonMs: 900 }); }}
+            starred={starred}
+            onToggleStar={(repo) => {
+              const key = repo.full_name;
+              const was = starred.has(key);
+              triggerHaptic(was ? 'tick' : 'success');
+              // Optimistic: flip immediately, then confirm with GitHub.
+              setStarred((prev) => {
+                const next = new Set(prev);
+                if (was) next.delete(key); else next.add(key);
+                return next;
+              });
+              void (was
+                ? unstarRepo(repoOwnerLogin(repo), repo.name, settings.personalAccessToken)
+                : starRepo(repoOwnerLogin(repo), repo.name, settings.personalAccessToken)
+              ).catch(() => {
+                // Roll back if GitHub refused.
+                setStarred((prev) => {
+                  const next = new Set(prev);
+                  if (was) next.add(key); else next.delete(key);
+                  return next;
+                });
+              });
+            }}
             onSelectRepo={(r) => {
               setSelectedRepo(r);
               setCurrentScreen('repo_dashboard');
@@ -673,9 +808,33 @@ function GitofyApp() {
               setSelectedRepoIds(ids);
               setShowDeleteConfirmDialog(true);
             }}
+            onBatchArchive={async (ids: number[], archived: boolean) => {
+              for (const id of ids) {
+                const repo = repos.find((r) => r.id === id);
+                if (!repo) continue;
+                try { await setRepoArchived(repoOwnerLogin(repo), repo.name, archived, settings.personalAccessToken); }
+                catch { /* keep going; the reload reflects what actually changed */ }
+              }
+              setIsDeleteMode(false);
+              setSelectedRepoIds([]);
+              await loadRepositories();
+            }}
+            onBatchVisibility={async (ids: number[], isPrivate: boolean) => {
+              for (const id of ids) {
+                const repo = repos.find((r) => r.id === id);
+                if (!repo) continue;
+                try { await setRepoVisibility(repoOwnerLogin(repo), repo.name, isPrivate, settings.personalAccessToken); }
+                catch { /* keep going */ }
+              }
+              setIsDeleteMode(false);
+              setSelectedRepoIds([]);
+              await loadRepositories();
+            }}
+            onOpenAppStore={() => { setIsNavVisible(false); setAppStoreOpen(true); }}
             onOpenSettings={() => setCurrentScreen('settings')}
             onOpenAccounts={() => setShowAccountsSheet(true)}
             onScrollDelta={handleScrollDelta}
+            offlineNote={reposSavedAt && !isLoadingRepos ? `No connection — showing your saved list (${cacheAge(reposSavedAt)})` : null}
             isDeleteMode={isDeleteMode}
             setIsDeleteMode={setIsDeleteMode}
             selectedRepoIds={selectedRepoIds}
@@ -727,6 +886,9 @@ function GitofyApp() {
             onOpenCommits={() => { setIsNavVisible(false); setCurrentScreen('repo_commits'); }}
             onRunWorkflows={() => setCurrentScreen('workflows')}
             onOpenRepoSettings={() => setCurrentScreen('repo_settings')}
+            onOpenBranches={() => setCurrentScreen('branch_manager')}
+            onOpenReleaseCreator={() => setCurrentScreen('release_creator')}
+            onOpenIssues={() => setCurrentScreen('issues')}
             onDeleteRepo={() => {
               setSelectedRepoIds([selectedRepo.id]);
               setRepoActionRepo(selectedRepo);
@@ -874,6 +1036,7 @@ function GitofyApp() {
 
         {currentScreen === 'workflows' && selectedRepo && (
           <WorkflowsScreen
+            onEditWorkflow={(wf: WorkflowItem) => { setEditingWorkflow(wf); setCurrentScreen('workflow_editor'); }}
             repoName={selectedRepo.full_name || selectedRepo.name}
             onBack={() => setCurrentScreen('repo_dashboard')}
           />
@@ -881,6 +1044,7 @@ function GitofyApp() {
 
         {currentScreen === 'upload_flow' && selectedRepo && activeZipFile && (
           <M3UploadFlowScreen
+            onSendToMoreRepos={() => { setCurrentScreen('multi_upload'); setIsNavVisible(false); }}
             repo={selectedRepo}
             zipFile={activeZipFile}
             onSuccess={(sha, result) => {
@@ -929,6 +1093,9 @@ function GitofyApp() {
             onBack={() => setCurrentScreen('home')}
             onTokenUpdated={loadRepositories}
             onOpenGitHubSettings={() => setCurrentScreen('github_settings')}
+            onOpenGists={() => setCurrentScreen('gists')}
+            onOpenSearch={() => setCurrentScreen('global_search')}
+            onOpenErrorLog={() => setCurrentScreen('error_log')}
             onOpenPermissions={() => setCurrentScreen('permissions')}
             onOpenDiagnostics={() => setCurrentScreen('login_diagnostics')}
             accounts={accounts}
@@ -942,6 +1109,7 @@ function GitofyApp() {
             }}
             onLogoutAll={async () => {
               await logoutAll();
+              cacheClear();
               setRepos([]);
               setInboxItems([]);
               setSelectedRepo(null);
@@ -965,6 +1133,74 @@ function GitofyApp() {
           <GitHubSettingsScreen
             token={settings.personalAccessToken}
             onBack={() => setCurrentScreen('settings')}
+            onSaved={() => { void loadRepositories(); }}
+          />
+        )}
+
+        {currentScreen === 'multi_upload' && selectedRepo && activeZipFile && (
+          <MultiRepoUploadScreen
+            zipFile={activeZipFile}
+            repos={repos}
+            currentRepo={selectedRepo}
+            token={settings.personalAccessToken}
+            onBack={() => setCurrentScreen('upload_flow')}
+            onFinished={() => { void loadRepositories(); }}
+          />
+        )}
+
+        {currentScreen === 'issues' && selectedRepo && (
+          <IssuesScreen
+            repo={selectedRepo}
+            token={settings.personalAccessToken}
+            onBack={() => setCurrentScreen('repo_dashboard')}
+          />
+        )}
+
+        {currentScreen === 'release_creator' && selectedRepo && (
+          <ReleaseCreatorScreen
+            repo={selectedRepo}
+            token={settings.personalAccessToken}
+            onBack={() => setCurrentScreen('repo_dashboard')}
+            onCreated={() => { void loadRepositories(); }}
+          />
+        )}
+
+        {currentScreen === 'branch_manager' && selectedRepo && (
+          <BranchManagerScreen
+            repo={selectedRepo}
+            token={settings.personalAccessToken}
+            onBack={() => setCurrentScreen('repo_dashboard')}
+          />
+        )}
+
+        {currentScreen === 'error_log' && (
+          <ErrorLogScreen onBack={() => setCurrentScreen('settings')} />
+        )}
+
+        {currentScreen === 'gists' && (
+          <GistsScreen token={settings.personalAccessToken} onBack={() => setCurrentScreen('settings')} />
+        )}
+
+        {currentScreen === 'global_search' && (
+          <GlobalSearchScreen
+            token={settings.personalAccessToken}
+            username={settings.githubUsername}
+            repos={repos}
+            onBack={() => setCurrentScreen('home')}
+            onOpenRepo={(fullName) => {
+              const found = repos.find((r) => r.full_name === fullName);
+              if (found) { setSelectedRepo(found); setIsNavVisible(false); setCurrentScreen('repo_dashboard'); }
+              else openExternal(`https://github.com/${fullName}`);
+            }}
+          />
+        )}
+
+        {currentScreen === 'workflow_editor' && selectedRepo && editingWorkflow && (
+          <WorkflowEditorScreen
+            repo={selectedRepo}
+            workflow={editingWorkflow}
+            token={settings.personalAccessToken}
+            onBack={() => { setEditingWorkflow(null); setCurrentScreen('workflows'); }}
             onSaved={() => { void loadRepositories(); }}
           />
         )}
@@ -994,9 +1230,9 @@ function GitofyApp() {
       {/* Scroll-Reactive FAB Menu (§৫.৯ & §৭) */}
       {currentScreen === 'home' && !isDeleteMode && (
         <FabMenu
-          // Its own scroll rule (see handleScrollDelta): scroll up and it is
-          // there, scroll down and it slides away.
-          visible={fabVisible}
+          // Exactly opposite the nav bar: when the nav is hidden the FAB comes
+          // into its place and is visible; when the nav is visible the FAB hides.
+          visible={!isNavVisible}
           onCreateRepo={() => setIsCreateSheetOpen(true)}
           onDeleteRepo={() => {
             triggerHaptic('heavy');
@@ -1084,7 +1320,7 @@ function GitofyApp() {
         description="Your GitHub session is no longer valid. Please log in again."
         confirmLabel="Log in"
         cancelLabel="Later"
-        onConfirm={() => { void logoutActive(); setRepos([]); setInboxItems([]); }}
+        onConfirm={() => { void logoutActive(); cacheClear(); setRepos([]); setInboxItems([]); }}
         onCancel={() => undefined}
       />
 
@@ -1113,6 +1349,32 @@ function GitofyApp() {
           Logged out. Everything was wiped from your device.
         </div>
       )}
+      {/* App Store search. Slides up from the bottom, and slides back down the
+          same way on close — the surface stays mounted for the whole exit. */}
+      <SlideUpScreen
+        isOpen={appStoreOpen}
+        zIndex={88}
+        onClosed={() => { setIsNavVisible(true); }}
+      >
+        <AppStoreScreen
+          token={settings.personalAccessToken}
+          username={settings.githubUsername}
+          repos={repos}
+          onRequestClose={() => setAppStoreOpen(false)}
+        />
+      </SlideUpScreen>
+
+      {/* Per-screen lock: chosen screens ask for the device lock again on entry. */}
+      {session.isAuthenticated
+        && settings.appLockMode !== 'off'
+        && (settings.lockedScreens ?? []).includes(currentScreen)
+        && !unlockedScreens.has(currentScreen) && (
+          <div className="fixed inset-0 z-[120] flex flex-col animate-fade-in" style={{ backgroundColor: colors.background }}>
+            <AppLockScreen
+              onUnlock={() => setUnlockedScreens((prev) => new Set(prev).add(currentScreen))}
+            />
+          </div>
+        )}
     </AndroidFrame>
   );
 }

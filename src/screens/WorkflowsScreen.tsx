@@ -18,11 +18,13 @@ import { SkeletonRows } from '../ui/m3/SkeletonRows';
 export interface WorkflowsScreenProps {
   repoName: string;
   onBack: () => void;
+  onEditWorkflow?: (wf: WorkflowItem) => void;
 }
 
 export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
   repoName,
   onBack,
+  onEditWorkflow,
 }) => {
   const { colors, settings, triggerHaptic } = useTheme();
   const [workflows, setWorkflows] = useState<WorkflowItem[]>([]);
@@ -566,6 +568,16 @@ export const WorkflowsScreen: React.FC<WorkflowsScreenProps> = ({
               >
                 Reload Runs
               </button>
+              {onEditWorkflow && selectedWorkflow && (
+                <button
+                  type="button"
+                  onClick={() => onEditWorkflow(selectedWorkflow)}
+                  className="text-xs font-bold cursor-pointer"
+                  style={{ color: colors.primary }}
+                >
+                  Edit YAML
+                </button>
+              )}
             </div>
 
             {isLoadingRuns ? (

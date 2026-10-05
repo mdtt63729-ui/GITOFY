@@ -120,7 +120,7 @@ export const FabMenu: React.FC<FabMenuProps> = ({
 
       {/* FAB and Items Container anchored at bottom right */}
       <div
-        className="gitofy-fab fixed right-4 z-[70] flex flex-col items-end"
+        className={`gitofy-fab fixed z-[70] flex flex-col ${settings.fabPosition === 'center' ? 'left-1/2 -translate-x-1/2 items-center' : 'right-4 items-end'}`}
         style={{
           // Inline, so no stylesheet rule can win. The container must ignore
           // touches (its empty area used to swallow scrolls), while the button

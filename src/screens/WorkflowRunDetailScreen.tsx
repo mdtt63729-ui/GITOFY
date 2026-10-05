@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { SkeletonRows } from '../ui/m3/SkeletonRows';
 import { useTheme } from '../ui/ThemeContext';
 import { openExternal } from '../utils/external';
+import { notifyRunFinished } from '../utils/runNotifications';
+import { pushRunSummary } from '../utils/widget';
 import { M3IconButton } from '../ui/m3/M3IconButton';
 import { M3Button } from '../ui/m3/M3Button';
 import { WorkflowItem, WorkflowRun } from '../types';
@@ -84,7 +86,13 @@ export const WorkflowRunDetailScreen:React.FC<Props>=({repoName,workflow,initial
       setRun(rr.run); mergeJobs(jj.jobs as Job[]); setUpdatedAt(Date.now()); setConnection('live'); setError(null);
       const rl=getGitHubRateLimitState(); if(rl.remaining!==null&&rl.limit&&rl.remaining/rl.limit<.05) setRateBanner('GitHub rate limit is very low. Log tailing is paused to protect your token.'); else if(rl.remaining!==null&&rl.limit&&rl.remaining/rl.limit<.2) setRateBanner('GitHub rate limit is getting low. Refresh intervals are stretched.'); else setRateBanner(null);
       setSelectedJobId(prev=>prev ?? (jj.jobs.length ? jj.jobs[0].id : null));
-      if(lastRunState.current && lastRunState.current!==`${rr.run.status}:${rr.run.conclusion}` && rr.run.status==='completed') { triggerHaptic(rr.run.conclusion==='success'?'success':'error'); }
+      if(lastRunState.current && lastRunState.current!==`${rr.run.status}:${rr.run.conclusion}` && rr.run.status==='completed') {
+        triggerHaptic(rr.run.conclusion==='success'?'success':'error');
+        // Tell the user even if they have looked away from the screen.
+        notifyRunFinished({ runId: rr.run.id, workflowName: rr.run.name || 'Workflow', repoName: repoName, conclusion: rr.run.conclusion, runNumber: rr.run.run_number });
+        // Keep the home-screen widget's last-run line current too.
+        pushRunSummary(rr.run.name || 'Workflow', rr.run.conclusion, rr.run.run_number);
+      }
       lastRunState.current=`${rr.run.status}:${rr.run.conclusion}`;
     }catch(e){ setConnection('offline'); if(!silent) setError(e instanceof Error?e.message:'Could not load GitHub run.'); }
     finally{setPolling(false);if(!silent)setLoading(false)}

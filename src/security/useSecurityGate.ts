@@ -42,6 +42,9 @@ export interface SecurityGateState {
   apkName?: string;
   phase: DownloadPhase;
   progress: number;
+  received: number;
+  total: number;
+  speedBps: number;
   error: string | null;
   onDownload: () => void;
   onLater: () => void;
@@ -55,6 +58,8 @@ export function useSecurityGate(ready: boolean, token: string | null): SecurityG
   const [apkName, setApkName] = useState<string | undefined>(undefined);
   const [phase, setPhase] = useState<DownloadPhase>('idle');
   const [progress, setProgress] = useState(0);
+  // Exact byte counts + the native-measured speed, for the M3 progress readout.
+  const [bytes, setBytes] = useState({ received: 0, total: 0, speedBps: 0 });
   const [error, setError] = useState<string | null>(null);
 
   const integrityDoneRef = useRef(false);
@@ -173,9 +178,13 @@ export function useSecurityGate(ready: boolean, token: string | null): SecurityG
     }
     setPhase('downloading');
     setProgress(0);
+    setBytes({ received: 0, total: 0, speedBps: 0 });
     setError(null);
 
-    const res = await downloadApk(info, token, (p) => setProgress(p));
+    const res = await downloadApk(info, token, (p) => {
+      setProgress(p.percent);
+      setBytes({ received: p.received, total: p.total, speedBps: p.speedBps });
+    });
     if (!res.ok || !res.path) {
       setPhase('error');
       setError(res.error ?? 'Download failed.');
@@ -208,5 +217,5 @@ export function useSecurityGate(ready: boolean, token: string | null): SecurityG
     setVisible(false);
   }, []);
 
-  return { visible, mode, version, apkName, phase, progress, error, onDownload, onLater, onContinue };
+  return { visible, mode, version, apkName, phase, progress, received: bytes.received, total: bytes.total, speedBps: bytes.speedBps, error, onDownload, onLater, onContinue };
 }

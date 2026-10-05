@@ -22,6 +22,9 @@ export interface SecuritySheetProps {
   apkName?: string;
   phase: DownloadPhase;
   progress: number;
+  received?: number;
+  total?: number;
+  speedBps?: number;
   error?: string | null;
   onDownload: () => void;
   onLater?: () => void;
@@ -39,6 +42,9 @@ export const SecuritySheet: React.FC<SecuritySheetProps> = ({
   apkName,
   phase,
   progress,
+  received,
+  total,
+  speedBps,
   error,
   onDownload,
   onLater,
@@ -142,7 +148,7 @@ export const SecuritySheet: React.FC<SecuritySheetProps> = ({
         </div>
 
         <div className="gsec-item gsec-item-5 flex-shrink-0 flex flex-col gap-2.5 px-6 pt-3 pb-5">
-          {busy && <SheetProgress value={pct} />}
+          {busy && <SheetProgress value={pct} received={received} total={total} speedBps={speedBps} />}
 
           <SheetPrimaryButton loading={busy} disabled={busy || phase === 'done'} onClick={onDownload}>
             {t('sec.update')}

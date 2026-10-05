@@ -195,4 +195,12 @@ export type AppScreen =
   | 'delete_repo'
   | 'repo_action'
   | 'repo_files'
-  | 'repo_commits';
+  | 'repo_commits'
+  | 'branch_manager'
+  | 'gists'
+  | 'global_search'
+  | 'workflow_editor'
+  | 'release_creator'
+  | 'issues'
+  | 'multi_upload'
+  | 'error_log';

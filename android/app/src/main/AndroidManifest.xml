@@ -35,6 +35,14 @@
                 <data android:mimeType="application/zip" />
                 <data android:mimeType="application/octet-stream" />
             </intent-filter>
+            <!-- Deep links: gitofy://repo/<owner>/<name> opens that repository
+                 in the app instead of the browser. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="gitofy" android:host="repo" />
+            </intent-filter>
             <!-- OAuth Web+PKCE callback (RFC 8252 reverse-domain style) (§6).
                  The app validates `state` + PKCE; unknown params are ignored. -->
             <intent-filter android:autoVerify="false">
@@ -44,6 +52,21 @@
                 <data android:scheme="gitofy" android:host="callback" />
             </intent-filter>
         </activity>
+
+        <!-- Home-screen widget. It only reads a summary the app pushed up, so
+             it never touches the network in the background. -->
+        <receiver
+            android:name=".GitofyWidgetProvider"
+            android:exported="true"
+            android:label="@string/gitofy_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.gitofy.app.WIDGET_REFRESH" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/gitofy_widget_info" />
+        </receiver>
 
         <!-- FileProvider for Actions APK artifact installation (F-01) -->
         <provider
